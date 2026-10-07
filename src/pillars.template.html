@@ -1,0 +1,655 @@
+<title>CitySim Globe 3D</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap">
+<style>
+/* Layout: a WebGL globe stage with the year set into its corner; pillar controls and the time axis below;
+   selection and chart underneath. Pillars: height = sqrt(population), thickness = city area. */
+:root {
+  --bg: #e6ece7; --panel: #f4f7f3; --space: #dfe8e4; --ocean: #bdd0d2; --land: #eef1e8;
+  --ink: #14262a; --muted: #566b6d; --rule: #bccac3; --accent: #0a7a74; --accent-ink: #ffffff;
+  --grat: rgba(20, 38, 42, 0.30); --halo: rgba(244, 247, 243, 0.92);
+  --c1: #0a7a74; --c2: #b4491b; --c3: #2f5da8; --c4: #8a6d0b; --c5: #4a7c2a;
+  --h0: #dbeaf0; --h1: #8fc4cf; --h2: #3f9a96; --h3: #e0b83a; --h4: #d6542b; --h5: #7a1a2b;
+  --font-display: "Newsreader", Georgia, serif; --font-ui: "IBM Plex Sans", system-ui, sans-serif; --font-data: "IBM Plex Mono", ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #080f11; --panel: #0e1a1d; --space: #04080a; --ocean: #0a1519; --land: #17292d;
+    --ink: #dbe9e6; --muted: #8aa3a2; --rule: #223539; --accent: #4fd0c4; --accent-ink: #06201e;
+    --grat: rgba(219, 233, 230, 0.22); --halo: rgba(14, 26, 29, 0.9);
+    --c1: #4fd0c4; --c2: #ff9a63; --c3: #7aa7ff; --c4: #e6c84f; --c5: #8fd16a;
+    --h0: #0f2a33; --h1: #1d5d66; --h2: #2f9a93; --h3: #e0b83a; --h4: #ff6a3d; --h5: #fff1d6; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #080f11; --panel: #0e1a1d; --space: #04080a; --ocean: #0a1519; --land: #17292d;
+  --ink: #dbe9e6; --muted: #8aa3a2; --rule: #223539; --accent: #4fd0c4; --accent-ink: #06201e;
+  --grat: rgba(219, 233, 230, 0.22); --halo: rgba(14, 26, 29, 0.9);
+  --c1: #4fd0c4; --c2: #ff9a63; --c3: #7aa7ff; --c4: #e6c84f; --c5: #8fd16a;
+  --h0: #0f2a33; --h1: #1d5d66; --h2: #2f9a93; --h3: #e0b83a; --h4: #ff6a3d; --h5: #fff1d6; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-ui); font-size: 14px; line-height: 1.45; padding-inline: 16px; padding-block: 18px 28px; }
+.wrap { max-width: 1280px; margin: 0 auto; display: grid; gap: 12px; }
+header { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 10px 24px; }
+h1 { font: 500 28px/1.1 var(--font-display); margin: 0; letter-spacing: -0.01em; }
+.sub { color: var(--muted); font-size: 13px; margin: 4px 0 0; max-width: 62ch; }
+.jump { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.jump button, .jump input { font: 500 13px var(--font-ui); color: var(--ink); background: transparent; border: 1px solid var(--rule); border-radius: 4px; padding: 7px 12px; }
+.jump button { cursor: pointer; }
+.jump button:hover { border-color: var(--accent); }
+.jump input { width: 190px; background: var(--panel); font-weight: 400; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.stage { position: relative; background: var(--space); border: 1px solid var(--rule); border-radius: 6px; height: clamp(400px, 74vh, 800px); width: 100%; overflow: hidden; touch-action: none; cursor: grab; }
+.stage.drag { cursor: grabbing; }
+.stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+#ov { pointer-events: none; }
+.yearbadge { position: absolute; left: 14px; top: 8px; pointer-events: none; font: 400 54px/1 var(--font-display); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; color: var(--ink); text-shadow: 0 0 10px var(--halo), 0 0 3px var(--halo); }
+.tools { position: absolute; top: 8px; right: 8px; display: flex; flex-direction: column; gap: 4px; }
+.tools button { width: 30px; height: 30px; font: 500 15px var(--font-ui); line-height: 1; color: var(--ink); background: var(--panel); border: 1px solid var(--rule); border-radius: 4px; cursor: pointer; }
+.tools button:hover { border-color: var(--accent); }
+.hint { position: absolute; left: 14px; bottom: 10px; font: 11px var(--font-data); color: var(--muted); pointer-events: none; text-shadow: 0 0 4px var(--halo); }
+.nogl { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; color: var(--muted); }
+.tip { position: absolute; pointer-events: none; background: var(--panel); border: 1px solid var(--rule); border-radius: 4px; padding: 6px 9px; font-size: 12px; max-width: 240px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18); }
+.tip b { font-weight: 600; }
+.tip span { display: block; color: var(--muted); font-family: var(--font-data); font-size: 11px; }
+.dials { display: flex; flex-wrap: wrap; gap: 8px 28px; align-items: center; color: var(--muted); font-size: 12.5px; }
+.dials label { display: flex; align-items: center; gap: 10px; }
+.dials input[type="range"] { width: 160px; height: 22px; }
+.dials output { font: 12px var(--font-data); color: var(--ink); min-width: 3.2em; }
+.timebar { display: grid; gap: 4px; }
+.timerow { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px; align-items: center; }
+.play { font: 500 13px var(--font-ui); min-width: 78px; padding: 8px 12px; color: var(--accent-ink); background: var(--accent); border: 0; border-radius: 4px; cursor: pointer; }
+input[type="range"] { width: 100%; accent-color: var(--accent); height: 26px; margin: 0; }
+.ticks { position: relative; height: 16px; margin-left: 90px; font: 10.5px var(--font-data); color: var(--muted); }
+.ticks span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+.ticks span:first-child { transform: none; }
+.ticks span:last-child { transform: translateX(-100%); }
+.lower { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 12px; align-items: start; }
+.card { background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 14px; min-width: 0; }
+.card h2 { font: 600 11px var(--font-ui); text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 0 0 8px; }
+.chart { width: 100%; height: 220px; display: block; cursor: ew-resize; touch-action: none; }
+.chart text { font: 10.5px var(--font-data); fill: var(--muted); }
+.rows { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.rows li { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto auto; gap: 8px; align-items: baseline; }
+.rows .sw { width: 10px; height: 10px; border-radius: 2px; align-self: center; }
+.rows .pop { font: 500 13px var(--font-data); font-variant-numeric: tabular-nums; }
+.rows .nm { overflow-wrap: anywhere; }
+.rows .nm small { color: var(--muted); }
+.rows li.off { color: var(--muted); }
+.rows button { font: 500 14px var(--font-ui); line-height: 1; color: var(--muted); background: transparent; border: 0; cursor: pointer; padding: 2px 4px; }
+.rows button:hover { color: var(--ink); }
+.empty { color: var(--muted); font-size: 13px; margin: 0; }
+.ramp { height: 10px; border-radius: 2px; border: 1px solid var(--rule); }
+.ramplab { display: flex; justify-content: space-between; font: 10.5px var(--font-data); color: var(--muted); margin-top: 3px; }
+.note { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 11.5px; color: var(--muted); margin-top: 8px; }
+footer { color: var(--muted); font-size: 12px; max-width: 120ch; }
+footer p { margin: 0 0 6px; }
+footer a { color: var(--accent); }
+@media (max-width: 860px) {
+  .lower { grid-template-columns: minmax(0, 1fr); }
+  .yearbadge { font-size: 38px; }
+  .ticks { margin-left: 0; }
+  .timerow { grid-template-columns: minmax(0, 1fr); }
+  .play { width: 100%; }
+  .stage { height: clamp(360px, 64vh, 580px); }
+}
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>CitySim Globe 3D</h1>
+      <p class="sub">Each pillar is a city: height is the square root of its population, thickness is its area. Drag to move, right-drag or Shift-drag to tilt and turn, scroll to zoom.</p>
+    </div>
+    <div class="jump" id="jump">
+      <button type="button" data-b="-1">Whole globe</button>
+      <input id="search" list="cities" placeholder="Find a city…" aria-label="Find a city" autocomplete="off">
+      <datalist id="cities"></datalist>
+    </div>
+  </header>
+
+  <div class="stage" id="stage" tabindex="0" aria-label="3D globe with city pillars. Arrow keys move, plus and minus zoom, Page Up and Page Down tilt.">
+    <canvas id="gl"></canvas>
+    <canvas id="ov"></canvas>
+    <div class="yearbadge" id="year">2357 BCE</div>
+    <div class="tools">
+      <button id="zin" aria-label="Zoom in">+</button>
+      <button id="zout" aria-label="Zoom out">−</button>
+      <button id="tup" aria-label="Tilt more" title="Tilt more">⤓</button>
+      <button id="tdn" aria-label="Tilt less" title="Tilt less">⤒</button>
+      <button id="north" aria-label="North up" title="North up">N</button>
+      <button id="zfit" aria-label="Whole globe" title="Whole globe">⌂</button>
+    </div>
+    <div class="hint" id="hint"></div>
+    <div class="tip" id="tip" hidden></div>
+    <div class="nogl" id="nogl" hidden>This page needs WebGL 2, which this browser did not give it.</div>
+  </div>
+
+  <div class="dials">
+    <label for="hmul">Pillar height <input type="range" id="hmul" min="0.2" max="4" step="0.05" value="1"><output id="hout">1.0×</output></label>
+    <label for="tmul">Thickness <input type="range" id="tmul" min="0.5" max="12" step="0.1" value="3"><output id="tout">3.0×</output></label>
+  </div>
+
+  <div class="timebar">
+    <div class="timerow">
+      <button class="play" id="play">Play</button>
+      <input type="range" id="slider" min="0" max="1000" step="1" value="0" aria-label="Year">
+    </div>
+    <div class="ticks" id="ticks" aria-hidden="true"></div>
+  </div>
+
+  <div class="lower">
+    <section class="card">
+      <h2>Population of selected cities</h2>
+      <svg class="chart" id="chart" role="img" aria-label="Population of the selected cities over time, log scale"></svg>
+      <div class="legend" id="clegend"></div>
+    </section>
+    <div style="display:grid;gap:12px;min-width:0">
+      <section class="card" aria-live="polite">
+        <h2>Selected</h2>
+        <ul class="rows" id="rows"></ul>
+        <p class="empty" id="empty">Click a pillar, pick a city from the search box, or use a jump button.</p>
+      </section>
+      <section class="card">
+        <h2>Pillar colour</h2>
+        <div class="ramp" id="ramp"></div>
+        <div class="ramplab"><span>10k</span><span>100k</span><span>1M</span><span>30M</span></div>
+        <p class="note">Colour is population on a log scale. Heights are exaggerated, about 125 km per √(1M people) at 1×; thickness is exaggerated too (the slider), with a floor of a couple of pixels so small cities stay visible.</p>
+      </section>
+    </div>
+  </div>
+
+  <footer>
+    <p>City populations come from Stadestér 1.0 (Reba et al., Chandler, Modelski, Buringh and others): the 4,476 cities that ever reach 100,000, as whole urban agglomerations, interpolated in log space between observations. A city is hidden before its first record and held at its last value (shown dimmer) after the table ends, about 2000. Land is any ground that has people in at least one density snapshot, drawn at 18 km resolution.</p>
+    <p>City area is measured from about 1800. Before that it is modelled as population divided by the median city density of 1800 (about 18,000 people per km²), so earlier pillars are estimates; the tooltip says which. Time axis is stretched: 2357 BCE–0, 0–1700 and 1700–2025 get 30%, 30% and 40% of the width. Data: <a href="https://doi.org/10.5281/zenodo.17180328" target="_blank" rel="noopener">Stadestér 1.0 (Zenodo, MIT)</a>.</p>
+  </footer>
+</div>
+
+<script>
+const DATA = /*__DATA__*/{};
+
+(async function () {
+  const $ = (s) => document.querySelector(s);
+  const START = -2357, END = 2025, RAD = Math.PI / 180, R_KM = 6371;
+  const SEGS = [[START, 0, 0, 0.3], [0, 1700, 0.3, 0.6], [1700, END, 0.6, 1]];
+  const tToYear = (t) => { for (const [a, b, ta, tb] of SEGS) if (t <= tb) return a + (b - a) * (t - ta) / (tb - ta); return END; };
+  const yearToT = (y) => { for (const [a, b, ta, tb] of SEGS) if (y <= b) return ta + (tb - ta) * (y - a) / (b - a); return 1; };
+  const fmtYear = (y) => { const r = Math.round(y); return r < 0 ? `${-r} BCE` : `${r} CE`; };
+  const fmtPop = (p) => p >= 1e6 ? +(p / 1e6).toFixed(p >= 1e7 ? 0 : 1) + "M" : p >= 1e3 ? Math.round(p / 1e3) + "k" : String(Math.round(p));
+  const fmtArea = (a) => a >= 100 ? Math.round(a).toLocaleString() : a.toFixed(1);
+  const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  const clean = (n) => n.replace(/, Al-.*|\(.*\)/g, "").trim();
+  const hex = (h) => { h = h.replace("#", ""); return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16) / 255); };
+  const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+  const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+
+  // ---- data
+  const CITIES = DATA.cities, BM = DATA.bookmarks, NC = CITIES.length;
+  const typed = (flat) => { const n = flat.length / 2, y = new Float64Array(n), v = new Float64Array(n); for (let i = 0; i < n; i++) { y[i] = flat[2 * i]; v[i] = flat[2 * i + 1]; } return [y, v]; };
+  for (const c of CITIES) {
+    [c.y, c.p] = typed(c.pts); c.n = c.y.length; c.pts = null; c.la = c.lat * RAD; c.lo = c.lon * RAD;
+    if (c.area) { [c.ay, c.av] = typed(c.area); c.area = null; }
+    if (c.sat) { [c.sy, c.sp] = typed(c.sat); c.sat = null; }
+  }
+  const [DY, DV] = typed(DATA.dens.flat());
+  function interp(ys, vs, yr) { // log-interpolated; null before first
+    const n = ys.length;
+    if (!n || yr < ys[0]) return null;
+    if (yr >= ys[n - 1]) return { v: vs[n - 1], held: yr > ys[n - 1] };
+    let lo = 0, hi = n - 1;
+    while (hi - lo > 1) { const m = (lo + hi) >> 1; if (ys[m] <= yr) lo = m; else hi = m; }
+    const f = (yr - ys[lo]) / (ys[hi] - ys[lo]);
+    return { v: Math.exp(Math.log(Math.max(vs[lo], 1e-9)) * (1 - f) + Math.log(Math.max(vs[hi], 1e-9)) * f), held: false };
+  }
+  const popAt = (c, yr) => { const r = interp(c.y, c.p, yr); return r && { p: r.v, held: r.held }; };
+  const densAt = (yr) => (interp(DY, DV, yr) || { v: DV[0] }).v;
+  function areaAt(c, yr, pop) { // km^2, measured when recorded, otherwise modelled from the 1800 density
+    if (c.ay) { const r = interp(c.ay, c.av, yr); if (r) return { a: r.v, modelled: false }; }
+    return { a: pop / densAt(yr), modelled: true };
+  }
+
+  // ---- tiny matrix helpers (column-major)
+  const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const norm = (a) => { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / l, a[1] / l, a[2] / l]; };
+  const perspective = (f, a, n, fa) => { const t = 1 / Math.tan(f / 2), m = new Float32Array(16); m[0] = t / a; m[5] = t; m[10] = (fa + n) / (n - fa); m[11] = -1; m[14] = 2 * fa * n / (n - fa); return m; };
+  function lookAt(e, c, u) {
+    const z = norm(sub(e, c)), x = norm(cross(u, z)), y = cross(z, x);
+    return new Float32Array([x[0], y[0], z[0], 0, x[1], y[1], z[1], 0, x[2], y[2], z[2], 0, -dot(x, e), -dot(y, e), -dot(z, e), 1]);
+  }
+  function mul(a, b) { const o = new Float32Array(16); for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) { let s = 0; for (let k = 0; k < 4; k++) s += a[k * 4 + r] * b[c * 4 + k]; o[c * 4 + r] = s; } return o; }
+
+  // ---- state
+  const S = { t: 0, lat: 28, lon: 100, head: 0, tilt: 0, range: 2.9, sel: [], hover: -1, hMul: 1, tMul: 3, shown: [] };
+  const FOV = 35 * RAD, RANGE_MIN = 0.012, RANGE_MAX = 3.0;
+  const stage = $("#stage"), glc = $("#gl"), ov = $("#ov"), octx = ov.getContext("2d"), tip = $("#tip");
+  let W = 1, H = 1, dpr = 1;
+
+  const gl = glc.getContext("webgl2", { antialias: true, alpha: false });
+  if (!gl) { $("#nogl").hidden = false; return; }
+
+  // ---- shaders
+  function program(vs, fs) {
+    const mk = (t, s) => { const sh = gl.createShader(t); gl.shaderSource(sh, s); gl.compileShader(sh); if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(sh)); return sh; };
+    const p = gl.createProgram(); gl.attachShader(p, mk(gl.VERTEX_SHADER, vs)); gl.attachShader(p, mk(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p);
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+    return p;
+  }
+  const globeP = program(`#version 300 es
+in vec3 aPos; uniform mat4 uVP; out vec3 vW;
+void main() { vW = aPos; gl_Position = uVP * vec4(aPos, 1.0); }`, `#version 300 es
+precision highp float;
+in vec3 vW; uniform sampler2D uMask; uniform vec3 uOcean, uLandC, uLight, uEye; out vec4 o;
+void main() {
+  vec3 n = normalize(vW);
+  vec2 uv = vec2(atan(n.y, n.x) / 6.2831853 + 0.5, 0.5 - asin(clamp(n.z, -1.0, 1.0)) / 3.14159265);
+  float m = texture(uMask, uv).r;
+  vec3 base = mix(uOcean, uLandC, smoothstep(0.38, 0.62, m));
+  float d = max(dot(n, uLight), 0.0);
+  vec3 col = base * (0.52 + 0.48 * d);
+  float rim = 1.0 - max(dot(n, normalize(uEye - n)), 0.0);
+  col *= 1.0 - 0.38 * pow(rim, 3.0);
+  o = vec4(col, 1.0);
+}`);
+  const lineP = program(`#version 300 es
+in vec3 aPos; uniform mat4 uVP; void main() { gl_Position = uVP * vec4(aPos, 1.0); }`, `#version 300 es
+precision highp float; uniform vec4 uCol; out vec4 o; void main() { o = uCol; }`);
+  const pillarP = program(`#version 300 es
+in vec3 aCorner; in vec3 aNormal; in vec2 aLL; in vec4 aSize;
+uniform mat4 uVP; uniform vec3 uEye; uniform float uPx;
+out vec3 vN; out float vV; out float vSel; out float vHeld; out float vTop;
+void main() {
+  if (aSize.x < 0.0) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }
+  float cl = cos(aLL.x), sl = sin(aLL.x), co = cos(aLL.y), so = sin(aLL.y);
+  vec3 n = vec3(cl * co, cl * so, sl), e = vec3(-so, co, 0.0), nn = vec3(-sl * co, -sl * so, cl);
+  vec3 base = n * 0.9997;
+  float w = max(aSize.y, uPx * length(uEye - base) * 1.3);
+  vec3 pos = base + n * (aCorner.z * (aSize.x + 0.0004)) + (e * aCorner.x + nn * aCorner.y) * w;
+  vN = e * aNormal.x + nn * aNormal.y + n * aNormal.z;
+  vV = aSize.z; vSel = mod(aSize.w, 10.0); vHeld = aSize.w >= 10.0 ? 1.0 : 0.0; vTop = aNormal.z;
+  gl_Position = uVP * vec4(pos, 1.0);
+}`, `#version 300 es
+precision highp float;
+in vec3 vN; in float vV; in float vSel; in float vHeld; in float vTop;
+uniform vec3 uRamp[6]; uniform vec3 uSel[5]; uniform vec3 uLight; uniform vec3 uLandC; out vec4 o;
+vec3 ramp(float t) { t = clamp(t, 0.0, 1.0) * 5.0; int i = int(min(floor(t), 4.0)); return mix(uRamp[i], uRamp[i + 1], t - float(i)); }
+void main() {
+  vec3 base = ramp(vV);
+  float s = floor(vSel + 0.5);
+  if (s >= 6.0) base = mix(base, vec3(1.0), 0.35);
+  else if (s >= 1.0) base = uSel[int(s) - 1];
+  if (vHeld > 0.5) base = mix(base, uLandC, 0.55);
+  float d = max(dot(normalize(vN), uLight), 0.0);
+  float shade = 0.5 + 0.5 * d + 0.12 * vTop;
+  o = vec4(base * shade, 1.0);
+}`);
+
+  // ---- geometry: globe sphere
+  const LAT_N = 180, LON_N = 360;
+  const sphere = (() => {
+    const v = new Float32Array((LAT_N + 1) * (LON_N + 1) * 3); let k = 0;
+    for (let i = 0; i <= LAT_N; i++) { const la = Math.PI / 2 - Math.PI * i / LAT_N; for (let j = 0; j <= LON_N; j++) { const lo = -Math.PI + 2 * Math.PI * j / LON_N; v[k++] = Math.cos(la) * Math.cos(lo); v[k++] = Math.cos(la) * Math.sin(lo); v[k++] = Math.sin(la); } }
+    const idx = new Uint32Array(LAT_N * LON_N * 6); k = 0;
+    for (let i = 0; i < LAT_N; i++) for (let j = 0; j < LON_N; j++) { const a = i * (LON_N + 1) + j, b = a + LON_N + 1; idx.set([a, b, a + 1, a + 1, b, b + 1], k); k += 6; }
+    return { v, idx };
+  })();
+  const vaoGlobe = gl.createVertexArray(); gl.bindVertexArray(vaoGlobe);
+  const bufSphere = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, bufSphere); gl.bufferData(gl.ARRAY_BUFFER, sphere.v, gl.STATIC_DRAW);
+  const aPosG = gl.getAttribLocation(globeP, "aPos"); gl.enableVertexAttribArray(aPosG); gl.vertexAttribPointer(aPosG, 3, gl.FLOAT, false, 0, 0);
+  const bufIdx = gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, bufIdx); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, sphere.idx, gl.STATIC_DRAW);
+
+  // land mask texture (R8, linear, wraps in longitude)
+  const mask = new Uint8Array(await new Response(new Blob([Uint8Array.from(atob(DATA.land.data), (c) => c.charCodeAt(0))]).stream().pipeThrough(new DecompressionStream("deflate"))).arrayBuffer());
+  const texMask = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, texMask);
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, DATA.land.w, DATA.land.h, 0, gl.RED, gl.UNSIGNED_BYTE, mask);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  DATA.land.data = null;
+
+  // ---- geometry: graticule (rebuilt when its step changes)
+  const vaoGrat = gl.createVertexArray(); gl.bindVertexArray(vaoGrat);
+  const bufGrat = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, bufGrat);
+  const aPosL = gl.getAttribLocation(lineP, "aPos"); gl.enableVertexAttribArray(aPosL); gl.vertexAttribPointer(aPosL, 3, gl.FLOAT, false, 0, 0);
+  let gratStep = 0, gratCount = 0;
+  function buildGraticule(step) {
+    const pts = [], P = (la, lo) => { const c = Math.cos(la); pts.push(c * Math.cos(lo) * 1.0006, c * Math.sin(lo) * 1.0006, Math.sin(la) * 1.0006); };
+    const seg = Math.max(0.5, Math.min(2, step / 4));
+    for (let la = -90 + step; la < 90; la += step) for (let lo = -180; lo < 180; lo += seg) { P(la * RAD, lo * RAD); P(la * RAD, (lo + seg) * RAD); }
+    for (let lo = -180; lo < 180; lo += step) for (let la = -90; la < 90; la += seg) { P(la * RAD, lo * RAD); P((la + seg) * RAD, lo * RAD); }
+    gl.bindVertexArray(vaoGrat); gl.bindBuffer(gl.ARRAY_BUFFER, bufGrat); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(pts), gl.DYNAMIC_DRAW);
+    gratStep = step; gratCount = pts.length / 3;
+  }
+
+  // ---- geometry: pillars (unit box, instanced)
+  const box = (() => {
+    const v = []; const face = (nx, ny, nz, corners) => { for (const k of [0, 1, 2, 0, 2, 3]) v.push(...corners[k], nx, ny, nz); };
+    face(0, 0, 1, [[-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1]]);
+    face(1, 0, 0, [[1, -1, 0], [1, 1, 0], [1, 1, 1], [1, -1, 1]]);
+    face(-1, 0, 0, [[-1, 1, 0], [-1, -1, 0], [-1, -1, 1], [-1, 1, 1]]);
+    face(0, 1, 0, [[1, 1, 0], [-1, 1, 0], [-1, 1, 1], [1, 1, 1]]);
+    face(0, -1, 0, [[-1, -1, 0], [1, -1, 0], [1, -1, 1], [-1, -1, 1]]);
+    return new Float32Array(v);
+  })();
+  const vaoPil = gl.createVertexArray(); gl.bindVertexArray(vaoPil);
+  const bufBox = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, bufBox); gl.bufferData(gl.ARRAY_BUFFER, box, gl.STATIC_DRAW);
+  const aC = gl.getAttribLocation(pillarP, "aCorner"), aN = gl.getAttribLocation(pillarP, "aNormal");
+  gl.enableVertexAttribArray(aC); gl.vertexAttribPointer(aC, 3, gl.FLOAT, false, 24, 0);
+  gl.enableVertexAttribArray(aN); gl.vertexAttribPointer(aN, 3, gl.FLOAT, false, 24, 12);
+  const inst = new Float32Array(NC * 6);
+  const bufInst = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, bufInst); gl.bufferData(gl.ARRAY_BUFFER, inst, gl.DYNAMIC_DRAW);
+  const aLL = gl.getAttribLocation(pillarP, "aLL"), aSz = gl.getAttribLocation(pillarP, "aSize");
+  gl.enableVertexAttribArray(aLL); gl.vertexAttribPointer(aLL, 2, gl.FLOAT, false, 24, 0); gl.vertexAttribDivisor(aLL, 1);
+  gl.enableVertexAttribArray(aSz); gl.vertexAttribPointer(aSz, 4, gl.FLOAT, false, 24, 8); gl.vertexAttribDivisor(aSz, 1);
+
+  // per-year pillar state, shared by the shader buffer, labels and picking
+  const P = { pop: new Float64Array(NC), h: new Float64Array(NC), w: new Float64Array(NC), area: new Float64Array(NC), modelled: new Uint8Array(NC), held: new Uint8Array(NC), on: new Uint8Array(NC) };
+  const MINP = 2000;
+  function rebuild() {
+    const year = tToYear(S.t), HS = 0.02 * S.hMul;
+    for (let i = 0; i < NC; i++) {
+      const c = CITIES[i], r = popAt(c, year), o = i * 6;
+      if (!r || r.p < MINP) { P.on[i] = 0; inst[o + 2] = -1; continue; }
+      const a = areaAt(c, year, r.p);
+      P.on[i] = 1; P.pop[i] = r.p; P.held[i] = r.held ? 1 : 0; P.area[i] = a.a; P.modelled[i] = a.modelled ? 1 : 0;
+      P.h[i] = HS * Math.sqrt(r.p / 1e6);
+      P.w[i] = 0.5 * Math.sqrt(a.a) / R_KM * S.tMul;
+      const si = S.sel.indexOf(i), hov = S.hover === i;
+      inst[o] = c.la; inst[o + 1] = c.lo; inst[o + 2] = P.h[i]; inst[o + 3] = P.w[i];
+      inst[o + 4] = clamp((Math.log10(r.p) - 4) / 3.5, 0, 1);
+      inst[o + 5] = (si >= 0 ? si + 1 : hov ? 6 : 0) + (r.held ? 10 : 0);
+    }
+    gl.bindBuffer(gl.ARRAY_BUFFER, bufInst); gl.bufferSubData(gl.ARRAY_BUFFER, 0, inst);
+  }
+
+  // ---- camera: orbit around a point on the surface, heading and tilt relative to local north/up
+  let C = null;
+  function camera() {
+    const la = S.lat * RAD, lo = S.lon * RAD, ps = S.head * RAD;
+    const cl = Math.cos(la), sl = Math.sin(la), co = Math.cos(lo), so = Math.sin(lo);
+    const F = [cl * co, cl * so, sl], E = [-so, co, 0], N = [-sl * co, -sl * so, cl];
+    const fh = [0, 1, 2].map((i) => N[i] * Math.cos(ps) + E[i] * Math.sin(ps));
+    const th = S.tilt * RAD * (1 - smooth(0.6, 1.8, S.range));
+    const off = [0, 1, 2].map((i) => F[i] * Math.cos(th) - fh[i] * Math.sin(th));
+    const up = [0, 1, 2].map((i) => F[i] * Math.sin(th) + fh[i] * Math.cos(th));
+    const eye = [0, 1, 2].map((i) => F[i] + off[i] * S.range);
+    const view = lookAt(eye, F, up), near = Math.max(S.range * 0.02, 0.0005), far = S.range + 3.2;
+    const proj = perspective(FOV, W / H, near, far);
+    const fwd = norm(sub(F, eye)), right = norm(cross(fwd, up));
+    C = { F, fh, eye, up, fwd, right, VP: mul(proj, view), th };
+    return C;
+  }
+  function toScreen(p) {
+    const m = C.VP, x = m[0] * p[0] + m[4] * p[1] + m[8] * p[2] + m[12], y = m[1] * p[0] + m[5] * p[1] + m[9] * p[2] + m[13], w = m[3] * p[0] + m[7] * p[1] + m[11] * p[2] + m[15];
+    if (w <= 0) return null;
+    return [(x / w * 0.5 + 0.5) * W, (1 - (y / w * 0.5 + 0.5)) * H, w];
+  }
+
+  // ---- render
+  let theme = null;
+  function readTheme() {
+    theme = { space: hex(css("--space")), ocean: hex(css("--ocean")), land: hex(css("--land")), grat: css("--grat"),
+      ramp: ["--h0", "--h1", "--h2", "--h3", "--h4", "--h5"].map((n) => hex(css(n))), sel: [1, 2, 3, 4, 5].map((i) => hex(css("--c" + i))) };
+    const rs = ["--h0", "--h1", "--h2", "--h3", "--h4", "--h5"].map((n, i) => `${css(n)} ${(i / 5) * 100}%`).join(",");
+    $("#ramp").style.background = `linear-gradient(90deg, ${rs})`;
+  }
+  function parseRgba(s) { const m = s.match(/[\d.]+/g).map(Number); return m.length === 4 ? m : [m[0], m[1], m[2], 1]; }
+  let want = false;
+  function render() { if (want) return; want = true; requestAnimationFrame(() => { want = false; draw(); }); }
+  function draw() {
+    const c = camera();
+    gl.viewport(0, 0, glc.width, glc.height);
+    gl.clearColor(theme.space[0], theme.space[1], theme.space[2], 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL);
+    const L = norm([0, 1, 2].map((i) => -c.fwd[i] * 0.6 + c.up[i] * 0.55 - c.right[i] * 0.35));
+    gl.useProgram(globeP);
+    gl.uniformMatrix4fv(gl.getUniformLocation(globeP, "uVP"), false, c.VP);
+    gl.uniform3fv(gl.getUniformLocation(globeP, "uOcean"), theme.ocean); gl.uniform3fv(gl.getUniformLocation(globeP, "uLandC"), theme.land);
+    gl.uniform3fv(gl.getUniformLocation(globeP, "uLight"), L); gl.uniform3fv(gl.getUniformLocation(globeP, "uEye"), c.eye);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, texMask); gl.uniform1i(gl.getUniformLocation(globeP, "uMask"), 0);
+    gl.bindVertexArray(vaoGlobe); gl.drawElements(gl.TRIANGLES, sphere.idx.length, gl.UNSIGNED_INT, 0);
+
+    const step = S.range > 1.5 ? 30 : S.range > 0.7 ? 15 : S.range > 0.35 ? 10 : S.range > 0.15 ? 5 : S.range > 0.07 ? 2 : 1;
+    if (step !== gratStep) buildGraticule(step);
+    gl.useProgram(lineP);
+    gl.uniformMatrix4fv(gl.getUniformLocation(lineP, "uVP"), false, c.VP); gl.uniform4fv(gl.getUniformLocation(lineP, "uCol"), parseRgba(theme.grat));
+    gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.bindVertexArray(vaoGrat); gl.drawArrays(gl.LINES, 0, gratCount);
+    gl.disable(gl.BLEND);
+
+    gl.useProgram(pillarP);
+    gl.uniformMatrix4fv(gl.getUniformLocation(pillarP, "uVP"), false, c.VP); gl.uniform3fv(gl.getUniformLocation(pillarP, "uEye"), c.eye);
+    gl.uniform1f(gl.getUniformLocation(pillarP, "uPx"), 2 * Math.tan(FOV / 2) / glc.height);
+    gl.uniform3fv(gl.getUniformLocation(pillarP, "uRamp"), new Float32Array(theme.ramp.flat())); gl.uniform3fv(gl.getUniformLocation(pillarP, "uSel"), new Float32Array(theme.sel.flat()));
+    gl.uniform3fv(gl.getUniformLocation(pillarP, "uLight"), L); gl.uniform3fv(gl.getUniformLocation(pillarP, "uLandC"), theme.land);
+    gl.bindVertexArray(vaoPil); gl.drawArraysInstanced(gl.TRIANGLES, 0, 30, NC);
+    overlay();
+  }
+
+  // ---- overlay: labels, scale bar, hint (2D canvas)
+  function overlay() {
+    const c = C, year = tToYear(S.t);
+    octx.setTransform(dpr, 0, 0, dpr, 0, 0); octx.clearRect(0, 0, W, H);
+    const vis = [];
+    const pxW = (2 * Math.tan(FOV / 2) / H);
+    for (let i = 0; i < NC; i++) {
+      if (!P.on[i]) continue;
+      const cc = CITIES[i], cl = Math.cos(cc.la), n = [cl * Math.cos(cc.lo), cl * Math.sin(cc.lo), Math.sin(cc.la)];
+      if (dot(n, c.eye) < 0.995) continue; // far side of the globe
+      const b = toScreen(n.map((v) => v * 0.9997)); if (!b) continue;
+      const top = toScreen(n.map((v) => v * (1 + P.h[i])));
+      if (b[0] < -40 || b[1] < -80 || b[0] > W + 40 || b[1] > H + 40) continue;
+      const wpx = Math.max(P.w[i] / (pxW * Math.hypot(...sub(c.eye, n)) ), 1.3);
+      vis.push({ i, bx: b[0], by: b[1], tx: top ? top[0] : b[0], ty: top ? top[1] : b[1], p: P.pop[i], wpx, depth: b[2] });
+    }
+    vis.sort((a, b) => b.p - a.p);
+    S.shown = vis;
+    // labels: the biggest few, more as you zoom in
+    const K = Math.round(clamp(10 / Math.pow(S.range, 0.85), 6, 90));
+    octx.font = "500 11.5px " + css("--font-ui"); const boxes = []; let nLab = 0;
+    for (const m of vis) {
+      const sel = S.sel.includes(m.i);
+      if (!sel && nLab >= K) continue;
+      const text = clean(CITIES[m.i].name), tw = octx.measureText(text).width, bx = m.tx + m.wpx / 2 + 4, by = m.ty - 7;
+      if (!sel && boxes.some((q) => bx < q[2] && bx + tw > q[0] && by < q[3] && by + 13 > q[1])) continue;
+      boxes.push([bx, by, bx + tw, by + 13]); if (!sel) nLab++;
+      octx.lineWidth = 3.5; octx.strokeStyle = css("--halo"); octx.strokeText(text, bx, by + 10);
+      octx.fillStyle = css("--ink"); octx.fillText(text, bx, by + 10);
+    }
+    // scale bar at the target (world units per px at range, 1 unit = 6371 km)
+    const kmPx = (2 * S.range * Math.tan(FOV / 2) / H) * R_KM, wantKm = [5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000].find((k) => k / kmPx > 70) || 10000;
+    const bw = wantKm / kmPx, bx0 = 14, by0 = H - 30;
+    octx.strokeStyle = css("--ink"); octx.lineWidth = 2; octx.beginPath();
+    octx.moveTo(bx0, by0 - 4); octx.lineTo(bx0, by0); octx.lineTo(bx0 + bw, by0); octx.lineTo(bx0 + bw, by0 - 4); octx.stroke();
+    octx.font = "11px " + css("--font-data"); octx.lineWidth = 3.5; octx.strokeStyle = css("--halo");
+    octx.strokeText(`${wantKm} km`, bx0 + 4, by0 - 7); octx.fillStyle = css("--ink"); octx.fillText(`${wantKm} km`, bx0 + 4, by0 - 7);
+    $("#hint").textContent = `${Math.abs(S.lat).toFixed(1)}°${S.lat < 0 ? "S" : "N"}  ${Math.abs(S.lon).toFixed(1)}°${S.lon < 0 ? "W" : "E"}   tilt ${Math.round(c.th / RAD)}°`;
+  }
+
+  function resize() {
+    const r = stage.getBoundingClientRect(); dpr = Math.min(2, window.devicePixelRatio || 1); W = Math.max(1, r.width); H = Math.max(1, r.height);
+    for (const cv of [glc, ov]) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+    render();
+  }
+
+  // ---- selection panel + chart
+  function updatePanel() {
+    const year = tToYear(S.t);
+    $("#year").textContent = fmtYear(year);
+    $("#empty").hidden = S.sel.length > 0;
+    $("#rows").innerHTML = S.sel.map((i, k) => {
+      const c = CITIES[i], r = popAt(c, year);
+      return `<li class="${r ? "" : "off"}"><span class="sw" style="background:var(--c${k % 5 + 1})"></span><span class="nm">${clean(c.name)} <small>${c.country}</small></span><span class="pop">${r ? "~" + fmtPop(r.p) + (r.held ? " held" : "") : "no record"}</span><button type="button" data-rm="${i}" aria-label="Remove ${clean(c.name)}">×</button></li>`;
+    }).join("");
+    drawCursor();
+  }
+  const CH = { l: 38, r: 8, t: 8, b: 20 };
+  function drawChart() {
+    const svg = $("#chart"), w = svg.clientWidth || 400, h = svg.clientHeight || 220;
+    svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+    const X = (t) => CH.l + t * (w - CH.l - CH.r), lo = 3, hi = 7.5, Y = (p) => CH.t + (1 - (Math.log10(Math.max(p, 1)) - lo) / (hi - lo)) * (h - CH.t - CH.b);
+    let g = "";
+    for (let e = 3; e <= 7; e++) g += `<line x1="${CH.l}" x2="${w - CH.r}" y1="${Y(10 ** e)}" y2="${Y(10 ** e)}" stroke="var(--rule)"/><text x="${CH.l - 5}" y="${Y(10 ** e) + 3.5}" text-anchor="end">${fmtPop(10 ** e)}</text>`;
+    for (const y of [0, 1000, 1700, 1900]) { const x = X(yearToT(y)); g += `<line x1="${x}" x2="${x}" y1="${CH.t}" y2="${h - CH.b}" stroke="var(--rule)" stroke-dasharray="2 3"/><text x="${x}" y="${h - 6}" text-anchor="middle">${y}</text>`; }
+    const path = (ys, vs) => {
+      let d = "", pen = false;
+      for (let i = 0; i <= 300; i++) { const t = i / 300, yr = tToYear(t), r = interp(ys, vs, yr); if (!r || (r.held && yr > ys[ys.length - 1] + 1)) { pen = false; continue; } d += `${pen ? "L" : "M"}${X(t).toFixed(1)} ${Y(r.v).toFixed(1)}`; pen = true; }
+      return d;
+    };
+    S.sel.forEach((ci, k) => {
+      const c = CITIES[ci], col = `var(--c${k % 5 + 1})`;
+      g += `<path d="${path(c.y, c.p)}" fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round"/>`;
+      for (let i = 0; i < c.n; i++) if (c.y[i] >= START) g += `<circle cx="${X(yearToT(c.y[i]))}" cy="${Y(c.p[i])}" r="1.9" fill="${col}"/>`;
+      if (c.sy) g += `<path d="${path(c.sy, c.sp)}" fill="none" stroke="${col}" stroke-width="2" stroke-dasharray="4 3"/>`;
+    });
+    if (!S.sel.length) g += `<text x="${w / 2}" y="${h / 2}" text-anchor="middle">select a city to chart it</text>`;
+    g += `<g id="cur"></g>`;
+    svg.innerHTML = g; svg._X = X; svg._Y = Y; svg._h = h;
+    $("#clegend").innerHTML = S.sel.some((i) => CITIES[i].sy) ? "<span>dashed: satellite-era urban area (GHSL), counted differently</span>" : "";
+    drawCursor();
+  }
+  function drawCursor() {
+    const svg = $("#chart"), cur = svg.querySelector("#cur"); if (!cur || !svg._X) return;
+    const year = tToYear(S.t), x = svg._X(S.t);
+    let g = `<line x1="${x}" x2="${x}" y1="${CH.t}" y2="${svg._h - CH.b}" stroke="var(--ink)" stroke-width="1.2"/>`;
+    S.sel.forEach((ci, k) => { const r = popAt(CITIES[ci], year); if (r) g += `<circle cx="${x}" cy="${svg._Y(r.p)}" r="4.2" fill="var(--c${k % 5 + 1})" stroke="var(--panel)" stroke-width="1.5"/>`; });
+    cur.innerHTML = g;
+  }
+  function select(list, additive) {
+    S.sel = (additive ? [...S.sel, ...list] : list).filter((v, k, a) => a.indexOf(v) === k).slice(-5);
+    drawChart(); updatePanel(); rebuild(); render();
+  }
+  $("#rows").addEventListener("click", (e) => { const b = e.target.closest("[data-rm]"); if (b) select(S.sel.filter((i) => i !== +b.dataset.rm), false); });
+
+  // ---- time
+  function setT(t) { S.t = clamp(t, 0, 1); $("#slider").value = Math.round(S.t * 1000); rebuild(); updatePanel(); render(); }
+  $("#slider").addEventListener("input", (e) => { stop(); setT(e.target.value / 1000); });
+  const chart = $("#chart");
+  const scrub = (e) => { const r = chart.getBoundingClientRect(); stop(); setT(((e.clientX - r.left) - CH.l) / (chart.clientWidth - CH.l - CH.r)); };
+  chart.addEventListener("pointerdown", (e) => { chart.setPointerCapture(e.pointerId); scrub(e); chart.onpointermove = scrub; });
+  chart.addEventListener("pointerup", () => { chart.onpointermove = null; });
+  let raf = 0, last = 0;
+  function stop() { S.playing = false; cancelAnimationFrame(raf); $("#play").textContent = "Play"; }
+  function tick(ts) { if (!S.playing) return; const dt = Math.min(0.05, (ts - last) / 1000); last = ts; setT(S.t + dt / 50); if (S.t >= 1) return stop(); raf = requestAnimationFrame(tick); }
+  $("#play").addEventListener("click", () => { if (S.playing) return stop(); if (S.t >= 1) S.t = 0; S.playing = true; $("#play").textContent = "Pause"; last = performance.now(); raf = requestAnimationFrame(tick); });
+  $("#hmul").addEventListener("input", (e) => { S.hMul = +e.target.value; $("#hout").textContent = S.hMul.toFixed(1) + "×"; rebuild(); render(); });
+  $("#tmul").addEventListener("input", (e) => { S.tMul = +e.target.value; $("#tout").textContent = S.tMul.toFixed(1) + "×"; rebuild(); render(); });
+
+  // ---- interaction
+  let anim = 0;
+  const ptrs = new Map(); let pinch = 0, downAt = null, mode = "pan";
+  function pickAt(mx, my) {
+    let best = null, bd = 1e9;
+    for (const m of S.shown) {
+      const dx = m.tx - m.bx, dy = m.ty - m.by, l2 = dx * dx + dy * dy || 1;
+      const t = clamp(((mx - m.bx) * dx + (my - m.by) * dy) / l2, 0, 1);
+      const d = Math.hypot(mx - (m.bx + dx * t), my - (m.by + dy * t)) - m.wpx / 2;
+      if (d < Math.max(5, 0) && d < bd) { bd = d; best = m; }
+    }
+    return best;
+  }
+  function pan(dx, dy) {
+    const wpp = 2 * S.range * Math.tan(FOV / 2) / H, cth = Math.max(Math.cos(C.th), 0.35);
+    const right = cross(C.fh, C.F);
+    const F = norm([0, 1, 2].map((i) => C.F[i] - right[i] * dx * wpp + C.fh[i] * dy * wpp / cth));
+    S.lat = Math.asin(clamp(F[2], -1, 1)) / RAD; S.lon = Math.atan2(F[1], F[0]) / RAD;
+  }
+  stage.addEventListener("contextmenu", (e) => e.preventDefault());
+  stage.addEventListener("pointerdown", (e) => {
+    if (e.target.closest(".tools")) return;
+    cancelAnimationFrame(anim); stage.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, [e.clientX, e.clientY]);
+    mode = e.button === 2 || e.shiftKey || e.ctrlKey ? "look" : "pan";
+    stage.classList.add("drag"); tip.hidden = true; downAt = [e.clientX, e.clientY, e.shiftKey && e.button === 0];
+    if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch = Math.hypot(a[0] - b[0], a[1] - b[1]); downAt = null; }
+  });
+  stage.addEventListener("pointermove", (e) => {
+    const rect = stage.getBoundingClientRect();
+    if (ptrs.has(e.pointerId)) {
+      const p = ptrs.get(e.pointerId), dx = e.clientX - p[0], dy = e.clientY - p[1];
+      if (ptrs.size === 1) { if (mode === "look") { S.head += dx * 0.4; S.tilt = clamp(S.tilt + dy * 0.3, 0, 75); } else pan(dx, dy); }
+      ptrs.set(e.pointerId, [e.clientX, e.clientY]);
+      if (ptrs.size === 2) { const [a, b] = [...ptrs.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]); if (pinch) S.range = clamp(S.range * pinch / d, RANGE_MIN, RANGE_MAX); pinch = d; }
+      render(); return;
+    }
+    const hit = pickAt(e.clientX - rect.left, e.clientY - rect.top), id = hit ? hit.i : -1;
+    if (id !== S.hover) { S.hover = id; rebuild(); render(); }
+    if (hit) {
+      const i = hit.i, c = CITIES[i];
+      tip.hidden = false;
+      tip.innerHTML = `<b>${clean(c.name)}</b> <span>${c.country}</span><span>~${fmtPop(P.pop[i])} people${P.held[i] ? " (last recorded value)" : ""}</span><span>${fmtArea(P.area[i])} km² ${P.modelled[i] ? "(modelled)" : "(measured)"}</span>`;
+      tip.style.left = Math.min(W - 220, e.clientX - rect.left + 14) + "px"; tip.style.top = Math.max(4, e.clientY - rect.top - 10) + "px";
+    } else tip.hidden = true;
+  });
+  const release = (e) => {
+    if (downAt && ptrs.size === 1 && e.type === "pointerup" && Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) < 4) {
+      const rect = stage.getBoundingClientRect(), hit = pickAt(e.clientX - rect.left, e.clientY - rect.top);
+      if (hit) select([hit.i], downAt[2]);
+    }
+    ptrs.delete(e.pointerId); pinch = 0; downAt = null; if (!ptrs.size) stage.classList.remove("drag");
+  };
+  stage.addEventListener("pointerup", release); stage.addEventListener("pointercancel", release);
+  stage.addEventListener("pointerleave", () => { tip.hidden = true; if (S.hover !== -1) { S.hover = -1; rebuild(); render(); } });
+  stage.addEventListener("wheel", (e) => { e.preventDefault(); cancelAnimationFrame(anim); S.range = clamp(S.range * Math.exp(e.deltaY * 0.0016), RANGE_MIN, RANGE_MAX); render(); }, { passive: false });
+  const zbtn = (k) => () => { cancelAnimationFrame(anim); S.range = clamp(S.range * k, RANGE_MIN, RANGE_MAX); render(); };
+  $("#zin").addEventListener("click", zbtn(1 / 1.6)); $("#zout").addEventListener("click", zbtn(1.6));
+  $("#tup").addEventListener("click", () => { S.tilt = clamp(S.tilt + 10, 0, 75); render(); });
+  $("#tdn").addEventListener("click", () => { S.tilt = clamp(S.tilt - 10, 0, 75); render(); });
+  $("#north").addEventListener("click", () => flyTo(S.lat, S.lon, S.range, S.tilt, 0, 400));
+  $("#zfit").addEventListener("click", () => flyTo(S.lat * 0.6, S.lon, 2.9, 0, 0, 700));
+  stage.addEventListener("keydown", (e) => {
+    const k = 12 * S.range / 3, m = { ArrowLeft: [k, 0], ArrowRight: [-k, 0], ArrowUp: [0, k], ArrowDown: [0, -k] }[e.key];
+    if (m) { e.preventDefault(); camera(); pan(m[0] * 10, m[1] * 10); render(); }
+    else if (e.key === "+" || e.key === "=") zbtn(1 / 1.3)();
+    else if (e.key === "-") zbtn(1.3)();
+    else if (e.key === "PageUp") { S.tilt = clamp(S.tilt + 8, 0, 75); render(); }
+    else if (e.key === "PageDown") { S.tilt = clamp(S.tilt - 8, 0, 75); render(); }
+  });
+  function flyTo(lat, lon, range, tilt, head, ms = 900) {
+    cancelAnimationFrame(anim);
+    const dl = ((lon - S.lon + 540) % 360) - 180, dh = ((head - S.head + 540) % 360) - 180, l0 = S.lon, p0 = S.lat, r0 = S.range, t0 = S.tilt, h0 = S.head;
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) { Object.assign(S, { lon: l0 + dl, lat, range, tilt, head: h0 + dh }); render(); return; }
+    const st = performance.now();
+    const step = (now) => {
+      const u = Math.min(1, (now - st) / ms), e = u < 0.5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2;
+      S.lon = l0 + dl * e; S.lat = p0 + (lat - p0) * e; S.head = h0 + dh * e; S.tilt = t0 + (tilt - t0) * e;
+      S.range = Math.exp(Math.log(r0) * (1 - e) + Math.log(range) * e);
+      draw(); if (u < 1) anim = requestAnimationFrame(step); else render();
+    };
+    anim = requestAnimationFrame(step);
+  }
+
+  // ---- jump buttons + search
+  $("#jump").insertAdjacentHTML("beforeend", BM.map((b, i) => `<button type="button" data-b="${i}">${b.title}</button>`).join(""));
+  $("#jump").addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    const i = +b.dataset.b;
+    if (i < 0) { select([], false); return flyTo(20, S.lon, 2.9, 0, 0); }
+    const bm = BM[i]; select(bm.cities, false); flyTo(bm.lat, bm.lon, bm.range, bm.tilt, 0);
+  });
+  const byLabel = new Map(); CITIES.forEach((c, i) => byLabel.set(`${clean(c.name)}, ${c.country}`, i));
+  $("#cities").innerHTML = [...byLabel.keys()].sort().map((k) => `<option value="${k.replace(/"/g, "&quot;")}">`).join("");
+  $("#search").addEventListener("change", (e) => {
+    const i = byLabel.get(e.target.value); if (i == null) return;
+    select([i], true); flyTo(CITIES[i].lat, CITIES[i].lon, 0.2, 55, 0); e.target.value = "";
+  });
+  $("#ticks").innerHTML = [[START, `${-START} BCE`], [0, "0"], [1700, "1700"], [END, String(END)]].map(([y, l]) => `<span style="left:${yearToT(y) * 100}%">${l}</span>`).join("");
+
+  const refreshTheme = () => { readTheme(); drawChart(); render(); };
+  new ResizeObserver(() => { resize(); drawChart(); }).observe(stage);
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", refreshTheme);
+  new MutationObserver(refreshTheme).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+
+  // deep link: #<w or jump 0-3>_<year>[_<tilt>]  (for checking a state)
+  readTheme(); resize();
+  const hm = /^#(\d|w)_(-?\d+)(?:_(\d+))?$/.exec(location.hash);
+  if (hm) {
+    S.t = yearToT(+hm[2]);
+    if (hm[1] !== "w" && BM[+hm[1]]) { const bm = BM[+hm[1]]; S.sel = bm.cities.slice(); S.lat = bm.lat; S.lon = bm.lon; S.range = bm.range; S.tilt = hm[3] != null ? +hm[3] : bm.tilt; }
+  }
+  drawChart(); setT(S.t);
+})();
+</script>
