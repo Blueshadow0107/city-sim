@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 RASTERS = ROOT / "data/raw/stadester/stadester_population_rasters"
 JSON_DIR = ROOT / "data/raw/stadester/json_nonmetro"  # whole agglomerations
 OUT = ROOT / "data/processed/world.json"
+GLOBE_OUT = ROOT / "data/processed/globe.json"
 
 BLOCK = 4
 LOG_MAX = 7.5  # log10(people per 20' cell) mapped to 255
@@ -96,6 +97,18 @@ def main() -> None:
            "cities": cities, "bookmarks": bookmarks}
     OUT.write_text(json.dumps(doc, ensure_ascii=False, separators=(",", ":")))
     print("wrote", OUT, f"{OUT.stat().st_size/1e6:.1f} MB")
+
+    # Globe bundle: one deflated chunk per frame (decoded lazily in the page) + a land mask chunk.
+    b64z = lambda a: base64.b64encode(zlib.compress(a.tobytes(), 9)).decode()  # noqa: E731
+    globe = {
+        "w": doc["w"], "h": doc["h"], "frames": FRAMES, "logMax": LOG_MAX,
+        "chunks": [b64z(q[i]) for i in range(len(FRAMES))],
+        "land": b64z((q > 0).any(axis=0).astype(np.uint8)),
+        "cities": cities,
+        "bookmarks": [{**b, "zoom": 20} for b in bookmarks],
+    }
+    GLOBE_OUT.write_text(json.dumps(globe, ensure_ascii=False, separators=(",", ":")))
+    print("wrote", GLOBE_OUT, f"{GLOBE_OUT.stat().st_size/1e6:.1f} MB")
 
 
 if __name__ == "__main__":

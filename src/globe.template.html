@@ -1,0 +1,533 @@
+<title>CitySim Globe</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap">
+<style>
+/* Layout: a globe stage with the year set into its corner and the time axis directly below;
+   selection, chart and legend underneath. Same palette family as the flat atlas. */
+:root {
+  --bg: #e6ece7; --panel: #f4f7f3; --space: #dfe8e4; --ocean: #c3d5d6; --land: #eef1e8; --limb: rgba(10, 40, 48, 0.30);
+  --ink: #14262a; --muted: #566b6d; --rule: #bccac3; --accent: #0a7a74; --accent-ink: #ffffff;
+  --grat: rgba(20, 38, 42, 0.14); --halo: rgba(244, 247, 243, 0.92);
+  --c1: #0a7a74; --c2: #b4491b; --c3: #2f5da8; --c4: #8a6d0b; --c5: #4a7c2a;
+  --h0: #efe3b8; --h1: #e8c374; --h2: #e09a3e; --h3: #c9652b; --h4: #9c2b2f; --h5: #4a0f2a;
+  --font-display: "Newsreader", Georgia, serif; --font-ui: "IBM Plex Sans", system-ui, sans-serif; --font-data: "IBM Plex Mono", ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #080f11; --panel: #0e1a1d; --space: #04080a; --ocean: #091316; --land: #101d20; --limb: rgba(0, 0, 0, 0.55);
+    --ink: #dbe9e6; --muted: #8aa3a2; --rule: #223539; --accent: #4fd0c4; --accent-ink: #06201e;
+    --grat: rgba(219, 233, 230, 0.12); --halo: rgba(14, 26, 29, 0.9);
+    --c1: #4fd0c4; --c2: #ff9a63; --c3: #7aa7ff; --c4: #e6c84f; --c5: #8fd16a;
+    --h0: #16393b; --h1: #2a6f68; --h2: #8bab4f; --h3: #e3c24a; --h4: #ff9a4d; --h5: #fff1d6; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #080f11; --panel: #0e1a1d; --space: #04080a; --ocean: #091316; --land: #101d20; --limb: rgba(0, 0, 0, 0.55);
+  --ink: #dbe9e6; --muted: #8aa3a2; --rule: #223539; --accent: #4fd0c4; --accent-ink: #06201e;
+  --grat: rgba(219, 233, 230, 0.12); --halo: rgba(14, 26, 29, 0.9);
+  --c1: #4fd0c4; --c2: #ff9a63; --c3: #7aa7ff; --c4: #e6c84f; --c5: #8fd16a;
+  --h0: #16393b; --h1: #2a6f68; --h2: #8bab4f; --h3: #e3c24a; --h4: #ff9a4d; --h5: #fff1d6; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-ui); font-size: 14px; line-height: 1.45; padding-inline: 16px; padding-block: 18px 28px; }
+.wrap { max-width: 1280px; margin: 0 auto; display: grid; gap: 12px; }
+header { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 10px 24px; }
+h1 { font: 500 28px/1.1 var(--font-display); margin: 0; letter-spacing: -0.01em; }
+.sub { color: var(--muted); font-size: 13px; margin: 4px 0 0; }
+.jump { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.jump button, .jump input { font: 500 13px var(--font-ui); color: var(--ink); background: transparent; border: 1px solid var(--rule); border-radius: 4px; padding: 7px 12px; }
+.jump button { cursor: pointer; }
+.jump button:hover { border-color: var(--accent); }
+.jump input { width: 190px; background: var(--panel); font-weight: 400; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.stage { position: relative; background: var(--space); border: 1px solid var(--rule); border-radius: 6px; height: clamp(380px, 72vh, 780px); width: 100%; overflow: hidden; touch-action: none; cursor: grab; }
+.stage.drag { cursor: grabbing; }
+.stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.yearbadge { position: absolute; left: 14px; top: 8px; pointer-events: none; font: 400 54px/1 var(--font-display); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; color: var(--ink); text-shadow: 0 0 10px var(--halo), 0 0 3px var(--halo); }
+.tools { position: absolute; top: 8px; right: 8px; display: flex; flex-direction: column; gap: 4px; }
+.tools button { width: 30px; height: 30px; font: 500 16px var(--font-ui); line-height: 1; color: var(--ink); background: var(--panel); border: 1px solid var(--rule); border-radius: 4px; cursor: pointer; }
+.tools button:hover { border-color: var(--accent); }
+.hint { position: absolute; left: 14px; bottom: 10px; font: 11px var(--font-data); color: var(--muted); pointer-events: none; text-shadow: 0 0 4px var(--halo); }
+.tip { position: absolute; pointer-events: none; background: var(--panel); border: 1px solid var(--rule); border-radius: 4px; padding: 6px 9px; font-size: 12px; max-width: 230px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18); }
+.tip b { font-weight: 600; }
+.tip span { display: block; color: var(--muted); font-family: var(--font-data); font-size: 11px; }
+.timebar { display: grid; gap: 4px; }
+.timerow { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px; align-items: center; }
+.play { font: 500 13px var(--font-ui); min-width: 78px; padding: 8px 12px; color: var(--accent-ink); background: var(--accent); border: 0; border-radius: 4px; cursor: pointer; }
+input[type="range"] { width: 100%; accent-color: var(--accent); height: 26px; margin: 0; }
+.ticks { position: relative; height: 16px; margin-left: 90px; font: 10.5px var(--font-data); color: var(--muted); }
+.ticks span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+.ticks span:first-child { transform: none; }
+.ticks span:last-child { transform: translateX(-100%); }
+.lower { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 12px; align-items: start; }
+.card { background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 14px; min-width: 0; }
+.card h2 { font: 600 11px var(--font-ui); text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 0 0 8px; }
+.chart { width: 100%; height: 220px; display: block; cursor: ew-resize; touch-action: none; }
+.chart text { font: 10.5px var(--font-data); fill: var(--muted); }
+.rows { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.rows li { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto auto; gap: 8px; align-items: baseline; }
+.rows .sw { width: 10px; height: 10px; border-radius: 2px; align-self: center; }
+.rows .pop { font: 500 13px var(--font-data); font-variant-numeric: tabular-nums; }
+.rows .nm { overflow-wrap: anywhere; }
+.rows .nm small { color: var(--muted); }
+.rows li.off { color: var(--muted); }
+.rows button { font: 500 14px var(--font-ui); line-height: 1; color: var(--muted); background: transparent; border: 0; cursor: pointer; padding: 2px 4px; }
+.rows button:hover { color: var(--ink); }
+.empty { color: var(--muted); font-size: 13px; margin: 0; }
+.ramp { height: 10px; border-radius: 2px; border: 1px solid var(--rule); }
+.ramplab { display: flex; justify-content: space-between; font: 10.5px var(--font-data); color: var(--muted); margin-top: 3px; }
+.note { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 11.5px; color: var(--muted); margin-top: 8px; }
+footer { color: var(--muted); font-size: 12px; max-width: 120ch; }
+footer p { margin: 0 0 6px; }
+footer a { color: var(--accent); }
+@media (max-width: 860px) {
+  .lower { grid-template-columns: minmax(0, 1fr); }
+  .yearbadge { font-size: 38px; }
+  .ticks { margin-left: 0; }
+  .timerow { grid-template-columns: minmax(0, 1fr); }
+  .play { width: 100%; }
+  .stage { height: clamp(340px, 62vh, 560px); }
+}
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>CitySim Globe</h1>
+      <p class="sub">Drag to rotate, scroll to zoom, click a city to chart it. 2357 BCE to 2025.</p>
+    </div>
+    <div class="jump" id="jump">
+      <button type="button" data-b="-1">Whole globe</button>
+      <input id="search" list="cities" placeholder="Find a city…" aria-label="Find a city" autocomplete="off">
+      <datalist id="cities"></datalist>
+    </div>
+  </header>
+
+  <div class="stage" id="stage" tabindex="0" aria-label="Globe. Arrow keys rotate, plus and minus zoom.">
+    <canvas id="cv"></canvas>
+    <div class="yearbadge" id="year">2357 BCE</div>
+    <div class="tools">
+      <button id="zin" aria-label="Zoom in">+</button>
+      <button id="zout" aria-label="Zoom out">−</button>
+      <button id="zfit" aria-label="Whole globe" title="Whole globe">⌂</button>
+    </div>
+    <div class="hint" id="hint"></div>
+    <div class="tip" id="tip" hidden></div>
+  </div>
+
+  <div class="timebar">
+    <div class="timerow">
+      <button class="play" id="play">Play</button>
+      <input type="range" id="slider" min="0" max="1000" step="1" value="0" aria-label="Year">
+    </div>
+    <div class="ticks" id="ticks" aria-hidden="true"></div>
+  </div>
+
+  <div class="lower">
+    <section class="card">
+      <h2>Population of selected cities</h2>
+      <svg class="chart" id="chart" role="img" aria-label="Population of the selected cities over time, log scale"></svg>
+      <div class="legend" id="clegend"></div>
+    </section>
+    <div style="display:grid;gap:12px;min-width:0">
+      <section class="card" aria-live="polite">
+        <h2>Selected</h2>
+        <ul class="rows" id="rows"></ul>
+        <p class="empty" id="empty">Click a city on the globe, pick one from the search box, or use a jump button.</p>
+      </section>
+      <section class="card">
+        <h2>Density</h2>
+        <div class="ramp" id="ramp"></div>
+        <div class="ramplab"><span>16</span><span>1k</span><span>100k</span><span>10M</span></div>
+        <p class="note">People per raster cell (about 37 km across at the equator), log scale. Nearest snapshot: <span id="snap"></span>.</p>
+      </section>
+    </div>
+  </div>
+
+  <footer>
+    <p>Heat is the Stadestér 1.0 population raster (rebuilt from HYDE 3.x, Reba et al., Chandler, Modelski and others) at quarter resolution: 4×4 blocks of the original 5-arcminute cells are summed. Snapshots are every 1000 years before 0 CE, every 100 to 1700, then every 10; years in between are interpolated in log space, so 2357 BCE sits between the 3000 and 2000 BCE grids. Pale ground is land that has people in at least one snapshot. Frames are decoded on demand, and only the near hemisphere is drawn.</p>
+    <p>Dots are the 4,476 cities that ever reach 100,000 (whole urban agglomerations), interpolated between observations. A city is hidden before its first record and held at its last value after the table ends (about 2000). At a given zoom only the largest cities in view are drawn. Dashed lines are the satellite-era (GHSL) urban areas for the four jump-to cities. Time axis is stretched: 2357 BCE–0, 0–1700 and 1700–2025 get 30%, 30% and 40% of the width. Data: <a href="https://doi.org/10.5281/zenodo.17180328" target="_blank" rel="noopener">Stadestér 1.0 (Zenodo, MIT)</a>.</p>
+  </footer>
+</div>
+
+<script>
+const GLOBE = /*__DATA__*/{};
+
+(async function () {
+  const $ = (s) => document.querySelector(s);
+  const START = -2357, END = 2025;
+  const SEGS = [[START, 0, 0, 0.3], [0, 1700, 0.3, 0.6], [1700, END, 0.6, 1]];
+  const tToYear = (t) => { for (const [a, b, ta, tb] of SEGS) if (t <= tb) return a + (b - a) * (t - ta) / (tb - ta); return END; };
+  const yearToT = (y) => { for (const [a, b, ta, tb] of SEGS) if (y <= b) return ta + (tb - ta) * (y - a) / (b - a); return 1; };
+  const fmtYear = (y) => { const r = Math.round(y); return r < 0 ? `${-r} BCE` : `${r} CE`; };
+  const fmtPop = (p) => p >= 1e6 ? +(p / 1e6).toFixed(p >= 1e7 ? 0 : 1) + "M" : p >= 1e3 ? Math.round(p / 1e3) + "k" : String(Math.round(p));
+  const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  const clean = (n) => n.replace(/, Al-.*|\(.*\)/g, "").trim();
+  const RAD = Math.PI / 180;
+
+  const { w: GW, h: GH, frames: F, logMax, cities: CITIES, bookmarks: BM } = GLOBE;
+  const N = GW * GH;
+
+  // ---- lazy frame store: each frame is its own deflated chunk, decoded on demand, small LRU
+  async function inflate(b64) {
+    const bin = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+    return new Uint8Array(await new Response(new Blob([bin]).stream().pipeThrough(new DecompressionStream("deflate"))).arrayBuffer());
+  }
+  const LAND = await inflate(GLOBE.land); GLOBE.land = null;
+  const cache = new Map(), pending = new Map();
+  function frameReady(i) { return cache.has(i); }
+  function loadFrame(i) {
+    if (cache.has(i)) return Promise.resolve(cache.get(i));
+    if (!pending.has(i)) pending.set(i, inflate(GLOBE.chunks[i]).then((a) => {
+      cache.set(i, a); pending.delete(i);
+      while (cache.size > 6) cache.delete(cache.keys().next().value);
+      return a;
+    }));
+    return pending.get(i);
+  }
+  const frameIndex = (year) => { let i = 0; while (i < F.length - 2 && year >= F[i + 1]) i++; return i; };
+
+  // ---- cities
+  for (const c of CITIES) {
+    const p = c.pts; c.n = p.length / 2; c.y = new Float64Array(c.n); c.p = new Float64Array(c.n);
+    for (let i = 0; i < c.n; i++) { c.y[i] = p[2 * i]; c.p[i] = p[2 * i + 1]; }
+    c.pts = null; c.la = c.lat * RAD; c.lo = c.lon * RAD; c.cl = Math.cos(c.la); c.sl = Math.sin(c.la);
+    if (c.sat) { c.sy = []; c.sp = []; for (let i = 0; i < c.sat.length; i += 2) { c.sy.push(c.sat[i]); c.sp.push(c.sat[i + 1]); } c.sat = null; }
+  }
+  function popAt(y, p, yr) {
+    const n = y.length;
+    if (!n || yr < y[0]) return null;
+    if (yr >= y[n - 1]) return { p: p[n - 1], held: yr > y[n - 1] };
+    let lo = 0, hi = n - 1;
+    while (hi - lo > 1) { const m = (lo + hi) >> 1; if (y[m] <= yr) lo = m; else hi = m; }
+    const f = (yr - y[lo]) / (y[hi] - y[lo]);
+    return { p: Math.exp(Math.log(Math.max(p[lo], 1)) * (1 - f) + Math.log(Math.max(p[hi], 1)) * f), held: false };
+  }
+  const cityAt = (c, yr) => popAt(c.y, c.p, yr);
+
+  // ---- colour: per-cell packed ABGR, ocean/land base with the heat ramp composited over land
+  const hex = (h) => { h = h.replace("#", ""); return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16)); };
+  const pack = (r, g, b) => ((255 << 24) | (Math.round(b) << 16) | (Math.round(g) << 8) | Math.round(r)) >>> 0;
+  const LUTL = new Uint32Array(256);
+  let OCEAN = 0;
+  function buildLut() {
+    const stops = ["--h0", "--h1", "--h2", "--h3", "--h4", "--h5"].map((n) => hex(css(n)));
+    const land = hex(css("--land")), oc = hex(css("--ocean"));
+    OCEAN = pack(...oc);
+    for (let q = 0; q < 256; q++) {
+      const v = (q / 255) * logMax;
+      const a = v < 1.2 ? 0 : Math.min(1, (v - 1.2) / 1.0);
+      const t = Math.min(1, Math.max(0, (v - 1.4) / 5.6)) * (stops.length - 1);
+      const i = Math.min(stops.length - 2, Math.floor(t)), f = t - i;
+      const c = [0, 1, 2].map((k) => (stops[i][k] * (1 - f) + stops[i + 1][k] * f) * a + land[k] * (1 - a));
+      LUTL[q] = pack(c[0], c[1], c[2]);
+    }
+    $("#ramp").style.background = `linear-gradient(90deg, ${stops.map((s, i) => `rgb(${s}) ${(i / 5) * 100}%`).join(",")})`;
+  }
+  const CELL = new Uint32Array(N);
+  let cellKey = "";
+  function buildCells(year) {
+    const i = frameIndex(year), A = cache.get(i), B = cache.get(i + 1);
+    if (!A || !B) return false;
+    const f = Math.min(1, Math.max(0, (year - F[i]) / (F[i + 1] - F[i])));
+    const key = i + ":" + Math.round(f * 200);
+    if (key === cellKey) return true; cellKey = key;
+    for (let k = 0; k < N; k++) CELL[k] = LAND[k] ? LUTL[Math.round(A[k] * (1 - f) + B[k] * f)] : OCEAN;
+    $("#snap").textContent = fmtYear(F.reduce((x, y) => Math.abs(y - year) < Math.abs(x - year) ? y : x));
+    return true;
+  }
+
+  // ---- state
+  const S = { t: 0, lon: 100, lat: 28, R: 1, fitR: 1, sel: [], shown: [], playing: false, fast: false };
+  const stage = $("#stage"), cv = $("#cv"), ctx = cv.getContext("2d"), tip = $("#tip");
+  const gcv = document.createElement("canvas"), gctx = gcv.getContext("2d");
+  let W = 0, H = 0, dpr = 1, gimg = null, g32 = null;
+  const MAXZ = 90;
+
+  function resize() {
+    const r = stage.getBoundingClientRect(); dpr = Math.min(2, window.devicePixelRatio || 1); W = r.width; H = r.height;
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    const was = S.R / (S.fitR || 1);
+    S.fitR = Math.min(W, H) * 0.46; S.R = S.fitR * (was || 1);
+    clampView(); schedule();
+  }
+  function clampView() { S.R = Math.min(S.fitR * MAXZ, Math.max(S.fitR * 0.8, S.R)); S.lat = Math.min(85, Math.max(-85, S.lat)); S.lon = ((S.lon + 540) % 360) - 180; }
+
+  // forward orthographic projection of (lat, lon in radians); returns [x, y, cos c]
+  function project(la, lo, cl, sl) {
+    const l0 = S.lon * RAD, p0 = S.lat * RAD, dl = lo - l0, cd = Math.cos(dl);
+    const cosc = Math.sin(p0) * sl + Math.cos(p0) * cl * cd;
+    return [W / 2 + S.R * cl * Math.sin(dl), H / 2 - S.R * (Math.cos(p0) * sl - Math.sin(p0) * cl * cd), cosc];
+  }
+
+  // ---- raster pass: inverse orthographic, per pixel
+  function paintGlobe(rs) {
+    const w = Math.max(2, Math.round(W * rs)), h = Math.max(2, Math.round(H * rs));
+    if (gcv.width !== w || gcv.height !== h) { gcv.width = w; gcv.height = h; gimg = gctx.createImageData(w, h); g32 = new Uint32Array(gimg.data.buffer); }
+    g32.fill(0);
+    const R = S.R * rs, cx = w / 2, cy = h / 2, l0 = S.lon * RAD, p0 = S.lat * RAD;
+    const sl = Math.sin(l0), cl = Math.cos(l0), sp = Math.sin(p0), cp = Math.cos(p0);
+    const Ex = -sl, Ey = cl, Nx = -sp * cl, Ny = -sp * sl, Nz = cp, Cx = cp * cl, Cy = cp * sl, Cz = sp;
+    const kU = GW / (2 * Math.PI), kV = GH / Math.PI, hu = GW / 2, hv = GH / 2;
+    for (let py = 0; py < h; py++) {
+      const y = (cy - py - 0.5) / R; if (y > 1 || y < -1) continue;
+      const xm = Math.sqrt(1 - y * y) * R;
+      const x0 = Math.max(0, Math.ceil(cx - xm)), x1 = Math.min(w - 1, Math.floor(cx + xm));
+      for (let px = x0; px <= x1; px++) {
+        const x = (px + 0.5 - cx) / R, z = Math.sqrt(Math.max(0, 1 - x * x - y * y));
+        const X = x * Ex + y * Nx + z * Cx, Y = x * Ey + y * Ny + z * Cy, Z = y * Nz + z * Cz;
+        let u = Math.floor(Math.atan2(Y, X) * kU + hu); if (u >= GW) u -= GW; else if (u < 0) u += GW;
+        let v = Math.floor(hv - Math.asin(Z > 1 ? 1 : Z < -1 ? -1 : Z) * kV); if (v >= GH) v = GH - 1; else if (v < 0) v = 0;
+        g32[py * w + px] = CELL[v * GW + u];
+      }
+    }
+    gctx.putImageData(gimg, 0, 0);
+  }
+
+  // ---- full draw
+  let want = false, idleTimer = 0;
+  function schedule(fast) {
+    if (fast) { S.fast = true; clearTimeout(idleTimer); idleTimer = setTimeout(() => { S.fast = false; schedule(); }, 140); }
+    if (want) return; want = true;
+    requestAnimationFrame(() => { want = false; draw(); });
+  }
+  function draw() {
+    const year = tToYear(S.t);
+    if (!buildCells(year)) return;
+    const R = S.R, cx = W / 2, cy = H / 2;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = css("--space"); ctx.fillRect(0, 0, W, H);
+    paintGlobe(S.fast ? 0.5 : 0.85);
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "medium";
+    ctx.drawImage(gcv, 0, 0, W, H);
+
+    // limb darkening + rim
+    const gr = ctx.createRadialGradient(cx, cy, R * 0.55, cx, cy, R);
+    gr.addColorStop(0, "rgba(0,0,0,0)"); gr.addColorStop(1, css("--limb"));
+    ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(cx, cy, R, 0, 6.2832); ctx.fill();
+    ctx.lineWidth = 1.5; ctx.strokeStyle = css("--rule"); ctx.beginPath(); ctx.arc(cx, cy, R, 0, 6.2832); ctx.stroke();
+
+    // graticule
+    const z = R / S.fitR, step = z < 2 ? 30 : z < 4 ? 15 : z < 9 ? 10 : z < 20 ? 5 : z < 45 ? 2 : 1;
+    ctx.strokeStyle = css("--grat"); ctx.lineWidth = 1; ctx.beginPath();
+    const line = (pts) => { let pen = false; for (const [la, lo] of pts) { const [x, y, c] = project(la, lo, Math.cos(la), Math.sin(la)); if (c <= 0) { pen = false; continue; } if (pen) ctx.lineTo(x, y); else ctx.moveTo(x, y); pen = true; } };
+    for (let la = -90 + step; la < 90; la += step) { const pts = []; for (let lo = -180; lo <= 180; lo += 2) pts.push([la * RAD, lo * RAD]); line(pts); }
+    for (let lo = -180; lo < 180; lo += step) { const pts = []; for (let la = -90; la <= 90; la += 2) pts.push([la * RAD, lo * RAD]); line(pts); }
+    ctx.stroke();
+
+    // cities on the near hemisphere: the K largest
+    const K = Math.min(1800, Math.round(30 * Math.pow(z, 1.3)));
+    const vis = [];
+    for (let i = 0; i < CITIES.length; i++) {
+      const c = CITIES[i], [x, y, cc] = project(c.la, c.lo, c.cl, c.sl);
+      if (cc < 0.04 || x < -10 || y < -10 || x > W + 10 || y > H + 10) continue;
+      const r = cityAt(c, year); if (!r || r.p < 2000) continue;
+      vis.push({ i, c, x, y, p: r.p, held: r.held, cc });
+    }
+    vis.sort((a, b) => b.p - a.p);
+    const live = vis.filter((m, k) => k < K || S.sel.includes(m.i));
+    for (const m of live) m.rad = (2 + 2.1 * Math.max(0, Math.log10(m.p / 2e4)) * Math.min(1.5, 0.8 + 0.12 * Math.log2(z + 1))) * (0.55 + 0.45 * m.cc);
+    S.shown = live;
+    for (let k = live.length - 1; k >= 0; k--) {
+      const m = live[k], si = S.sel.indexOf(m.i);
+      ctx.beginPath(); ctx.arc(m.x, m.y, m.rad, 0, 6.2832);
+      if (si >= 0) { ctx.fillStyle = css("--c" + (si % 5 + 1)); ctx.fill(); ctx.lineWidth = 1.6; ctx.strokeStyle = css("--panel"); ctx.stroke(); }
+      else { ctx.lineWidth = 1.3; ctx.strokeStyle = css("--ink"); ctx.globalAlpha = (m.held ? 0.45 : 0.85) * Math.min(1, m.cc * 3); ctx.stroke(); ctx.globalAlpha = 1; }
+    }
+    ctx.font = "500 11.5px " + css("--font-ui");
+    const boxes = []; let nLab = 0; const maxLab = Math.min(60, 8 + Math.round(6 * z));
+    for (const m of live) {
+      const sel = S.sel.indexOf(m.i) >= 0;
+      if (m.cc < 0.25 && !sel) continue;
+      if (!sel && nLab >= maxLab) continue;
+      const text = clean(m.c.name), tw = ctx.measureText(text).width, bx = m.x + m.rad + 4, by = m.y - 7;
+      if (!sel && boxes.some((b) => bx < b[2] && bx + tw > b[0] && by < b[3] && by + 13 > b[1])) continue;
+      boxes.push([bx, by, bx + tw, by + 13]); if (!sel) nLab++;
+      ctx.lineWidth = 3.5; ctx.strokeStyle = css("--halo"); ctx.strokeText(text, bx, by + 10);
+      ctx.fillStyle = css("--ink"); ctx.fillText(text, bx, by + 10);
+    }
+
+    // scale bar at the centre of the view (6371 km per radian)
+    const kmPx = 6371 / R, want = [10, 20, 50, 100, 200, 500, 1000, 2000, 5000].find((k) => k / kmPx > 70) || 5000;
+    const bw = want / kmPx, bx0 = 14, by0 = H - 30;
+    ctx.strokeStyle = css("--ink"); ctx.lineWidth = 2; ctx.beginPath();
+    ctx.moveTo(bx0, by0 - 4); ctx.lineTo(bx0, by0); ctx.lineTo(bx0 + bw, by0); ctx.lineTo(bx0 + bw, by0 - 4); ctx.stroke();
+    ctx.font = "11px " + css("--font-data"); ctx.lineWidth = 3.5; ctx.strokeStyle = css("--halo");
+    ctx.strokeText(`${want} km`, bx0 + 4, by0 - 7); ctx.fillStyle = css("--ink"); ctx.fillText(`${want} km`, bx0 + 4, by0 - 7);
+
+    $("#hint").textContent = `${Math.abs(S.lat).toFixed(1)}°${S.lat < 0 ? "S" : "N"}  ${Math.abs(S.lon).toFixed(1)}°${S.lon < 0 ? "W" : "E"}`;
+  }
+
+  // ---- selection panel + chart
+  function updatePanel() {
+    const year = tToYear(S.t);
+    $("#year").textContent = fmtYear(year);
+    $("#empty").hidden = S.sel.length > 0;
+    $("#rows").innerHTML = S.sel.map((i, k) => {
+      const c = CITIES[i], r = cityAt(c, year);
+      return `<li class="${r ? "" : "off"}"><span class="sw" style="background:var(--c${k % 5 + 1})"></span><span class="nm">${clean(c.name)} <small>${c.country}</small></span><span class="pop">${r ? "~" + fmtPop(r.p) + (r.held ? " held" : "") : "no record"}</span><button type="button" data-rm="${i}" aria-label="Remove ${clean(c.name)}">×</button></li>`;
+    }).join("");
+    drawCursor();
+  }
+  const CH = { l: 38, r: 8, t: 8, b: 20 };
+  function drawChart() {
+    const svg = $("#chart"), w = svg.clientWidth || 400, h = svg.clientHeight || 220;
+    svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+    const X = (t) => CH.l + t * (w - CH.l - CH.r);
+    const lo = 3, hi = 7.5, Y = (p) => CH.t + (1 - (Math.log10(Math.max(p, 1)) - lo) / (hi - lo)) * (h - CH.t - CH.b);
+    let g = "";
+    for (let e = 3; e <= 7; e++) g += `<line x1="${CH.l}" x2="${w - CH.r}" y1="${Y(10 ** e)}" y2="${Y(10 ** e)}" stroke="var(--rule)"/><text x="${CH.l - 5}" y="${Y(10 ** e) + 3.5}" text-anchor="end">${fmtPop(10 ** e)}</text>`;
+    for (const y of [0, 1000, 1700, 1900]) {
+      const x = X(yearToT(y));
+      g += `<line x1="${x}" x2="${x}" y1="${CH.t}" y2="${h - CH.b}" stroke="var(--rule)" stroke-dasharray="2 3"/><text x="${x}" y="${h - 6}" text-anchor="middle">${y}</text>`;
+    }
+    const path = (ys, ps) => {
+      let d = "", pen = false;
+      for (let i = 0; i <= 300; i++) {
+        const t = i / 300, yr = tToYear(t), r = popAt(ys, ps, yr);
+        if (!r || (r.held && yr > ys[ys.length - 1] + 1)) { pen = false; continue; }
+        d += `${pen ? "L" : "M"}${X(t).toFixed(1)} ${Y(r.p).toFixed(1)}`; pen = true;
+      }
+      return d;
+    };
+    S.sel.forEach((ci, k) => {
+      const c = CITIES[ci], col = `var(--c${k % 5 + 1})`;
+      g += `<path d="${path(c.y, c.p)}" fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round"/>`;
+      for (let i = 0; i < c.n; i++) if (c.y[i] >= START) g += `<circle cx="${X(yearToT(c.y[i]))}" cy="${Y(c.p[i])}" r="1.9" fill="${col}"/>`;
+      if (c.sy) g += `<path d="${path(c.sy, c.sp)}" fill="none" stroke="${col}" stroke-width="2" stroke-dasharray="4 3"/>`;
+    });
+    if (!S.sel.length) g += `<text x="${w / 2}" y="${h / 2}" text-anchor="middle">select a city to chart it</text>`;
+    g += `<g id="cur"></g>`;
+    svg.innerHTML = g; svg._X = X; svg._Y = Y; svg._h = h;
+    $("#clegend").innerHTML = S.sel.some((i) => CITIES[i].sy) ? "<span>dashed: satellite-era urban area (GHSL), counted differently</span>" : "";
+    drawCursor();
+  }
+  function drawCursor() {
+    const svg = $("#chart"), cur = svg.querySelector("#cur"); if (!cur || !svg._X) return;
+    const year = tToYear(S.t), x = svg._X(S.t);
+    let g = `<line x1="${x}" x2="${x}" y1="${CH.t}" y2="${svg._h - CH.b}" stroke="var(--ink)" stroke-width="1.2"/>`;
+    S.sel.forEach((ci, k) => { const r = cityAt(CITIES[ci], year); if (r) g += `<circle cx="${x}" cy="${svg._Y(r.p)}" r="4.2" fill="var(--c${k % 5 + 1})" stroke="var(--panel)" stroke-width="1.5"/>`; });
+    cur.innerHTML = g;
+  }
+  function select(list, additive) {
+    S.sel = (additive ? [...S.sel, ...list] : list).filter((v, k, a) => a.indexOf(v) === k).slice(-5);
+    drawChart(); updatePanel(); schedule();
+  }
+  $("#rows").addEventListener("click", (e) => { const b = e.target.closest("[data-rm]"); if (b) select(S.sel.filter((i) => i !== +b.dataset.rm), false); });
+
+  // ---- time (frames load lazily; show the previous frame until the new pair is decoded)
+  let seq = 0;
+  async function setT(t) {
+    S.t = Math.min(1, Math.max(0, t)); $("#slider").value = Math.round(S.t * 1000);
+    updatePanel();
+    const year = tToYear(S.t), i = frameIndex(year), mine = ++seq;
+    if (frameReady(i) && frameReady(i + 1)) { schedule(); }
+    else { await Promise.all([loadFrame(i), loadFrame(i + 1)]); if (mine !== seq) return; schedule(); }
+    if (i + 2 < F.length) loadFrame(i + 2); // prefetch ahead
+  }
+  $("#slider").addEventListener("input", (e) => { stop(); setT(e.target.value / 1000); });
+  const chart = $("#chart");
+  const scrub = (e) => { const r = chart.getBoundingClientRect(); stop(); setT(((e.clientX - r.left) - CH.l) / (chart.clientWidth - CH.l - CH.r)); };
+  chart.addEventListener("pointerdown", (e) => { chart.setPointerCapture(e.pointerId); scrub(e); chart.onpointermove = scrub; });
+  chart.addEventListener("pointerup", () => { chart.onpointermove = null; });
+  let raf = 0, last = 0;
+  function stop() { S.playing = false; cancelAnimationFrame(raf); $("#play").textContent = "Play"; }
+  function tick(ts) { if (!S.playing) return; const dt = Math.min(0.05, (ts - last) / 1000); last = ts; setT(S.t + dt / 50); if (S.t >= 1) return stop(); raf = requestAnimationFrame(tick); }
+  $("#play").addEventListener("click", () => { if (S.playing) return stop(); if (S.t >= 1) S.t = 0; S.playing = true; $("#play").textContent = "Pause"; last = performance.now(); raf = requestAnimationFrame(tick); });
+
+  // ---- rotate / zoom / pick
+  let anim = 0;
+  const ptrs = new Map(); let pinch = 0, downAt = null;
+  stage.addEventListener("pointerdown", (e) => {
+    if (e.target.closest(".tools")) return;
+    cancelAnimationFrame(anim); stage.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, [e.clientX, e.clientY]);
+    stage.classList.add("drag"); tip.hidden = true; downAt = [e.clientX, e.clientY, e.shiftKey];
+    if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch = Math.hypot(a[0] - b[0], a[1] - b[1]); downAt = null; }
+  });
+  stage.addEventListener("pointermove", (e) => {
+    const rect = stage.getBoundingClientRect();
+    if (ptrs.has(e.pointerId)) {
+      const p = ptrs.get(e.pointerId);
+      if (ptrs.size === 1) {
+        const dx = e.clientX - p[0], dy = e.clientY - p[1], k = 1 / (S.R * RAD);
+        S.lon -= dx * k / Math.max(Math.cos(S.lat * RAD), 0.25); S.lat += dy * k;
+      }
+      ptrs.set(e.pointerId, [e.clientX, e.clientY]);
+      if (ptrs.size === 2) { const [a, b] = [...ptrs.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]); if (pinch) S.R *= d / pinch; pinch = d; }
+      clampView(); schedule(true); return;
+    }
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    const hit = S.shown.find((m) => Math.hypot(m.x - mx, m.y - my) <= m.rad + 5);
+    if (hit) {
+      tip.hidden = false;
+      tip.innerHTML = `<b>${clean(hit.c.name)}</b> <span>${hit.c.country}</span><span>~${fmtPop(hit.p)} people${hit.held ? " (last recorded value)" : ""}</span>`;
+      tip.style.left = Math.min(W - 200, mx + 14) + "px"; tip.style.top = Math.max(4, my - 10) + "px";
+    } else tip.hidden = true;
+  });
+  const release = (e) => {
+    if (downAt && ptrs.size === 1 && e.type === "pointerup" && Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) < 4) {
+      const rect = stage.getBoundingClientRect(), mx = e.clientX - rect.left, my = e.clientY - rect.top;
+      const hit = S.shown.find((m) => Math.hypot(m.x - mx, m.y - my) <= m.rad + 5);
+      if (hit) select([hit.i], downAt[2]);
+    }
+    ptrs.delete(e.pointerId); pinch = 0; downAt = null; if (!ptrs.size) stage.classList.remove("drag");
+  };
+  stage.addEventListener("pointerup", release); stage.addEventListener("pointercancel", release);
+  stage.addEventListener("pointerleave", () => { tip.hidden = true; });
+  stage.addEventListener("wheel", (e) => { e.preventDefault(); cancelAnimationFrame(anim); S.R *= Math.exp(-e.deltaY * 0.0016); clampView(); schedule(true); }, { passive: false });
+  const zbtn = (k) => () => { cancelAnimationFrame(anim); S.R *= k; clampView(); schedule(); };
+  $("#zin").addEventListener("click", zbtn(1.6)); $("#zout").addEventListener("click", zbtn(1 / 1.6));
+  $("#zfit").addEventListener("click", () => flyTo(S.lat * 0.5, S.lon, 1, 600));
+  stage.addEventListener("keydown", (e) => {
+    const k = 8 / (S.R / S.fitR), m = { ArrowLeft: [-k, 0], ArrowRight: [k, 0], ArrowUp: [0, k], ArrowDown: [0, -k] }[e.key];
+    if (m) { e.preventDefault(); S.lon += m[0]; S.lat += m[1]; clampView(); schedule(); }
+    else if (e.key === "+" || e.key === "=") { S.R *= 1.3; clampView(); schedule(); }
+    else if (e.key === "-") { S.R /= 1.3; clampView(); schedule(); }
+  });
+  function flyTo(lat, lon, zoom, ms = 800) {
+    cancelAnimationFrame(anim);
+    let dl = ((lon - S.lon + 540) % 360) - 180; // shortest way round
+    const l0 = S.lon, p0 = S.lat, r0 = S.R, r1 = S.fitR * zoom;
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) { S.lon = l0 + dl; S.lat = lat; S.R = r1; clampView(); schedule(); return; }
+    const t0 = performance.now();
+    const step = (now) => {
+      const u = Math.min(1, (now - t0) / ms), e = u < 0.5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2;
+      S.lon = l0 + dl * e; S.lat = p0 + (lat - p0) * e; S.R = Math.exp(Math.log(r0) * (1 - e) + Math.log(r1) * e);
+      clampView(); S.fast = u < 1; draw();
+      if (u < 1) anim = requestAnimationFrame(step); else schedule();
+    };
+    anim = requestAnimationFrame(step);
+  }
+
+  // ---- jump buttons + search
+  $("#jump").insertAdjacentHTML("beforeend", BM.map((b, i) => `<button type="button" data-b="${i}">${b.title}</button>`).join(""));
+  $("#jump").addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    const i = +b.dataset.b;
+    if (i < 0) { select([], false); return flyTo(20, S.lon, 1); }
+    const bm = BM[i]; select(bm.cities, false); flyTo(bm.lat, bm.lon, bm.zoom);
+  });
+  const byLabel = new Map();
+  CITIES.forEach((c, i) => byLabel.set(`${clean(c.name)}, ${c.country}`, i));
+  $("#cities").innerHTML = [...byLabel.keys()].sort().map((k) => `<option value="${k.replace(/"/g, "&quot;")}">`).join("");
+  $("#search").addEventListener("change", (e) => {
+    const i = byLabel.get(e.target.value); if (i == null) return;
+    select([i], true); flyTo(CITIES[i].lat, CITIES[i].lon, 14); e.target.value = "";
+  });
+
+  $("#ticks").innerHTML = [[START, `${-START} BCE`], [0, "0"], [1700, "1700"], [END, String(END)]].map(([y, l]) => `<span style="left:${yearToT(y) * 100}%">${l}</span>`).join("");
+
+  const refreshTheme = () => { buildLut(); cellKey = ""; drawChart(); schedule(); };
+  new ResizeObserver(() => { resize(); drawChart(); }).observe(stage);
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", refreshTheme);
+  new MutationObserver(refreshTheme).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+
+  // deep link: #<w or jump 0-3>_<year>  (for checking a state)
+  buildLut(); resize();
+  const hm = /^#(\d|w)_(-?\d+)$/.exec(location.hash);
+  if (hm) { S.t = yearToT(+hm[2]); if (hm[1] !== "w" && BM[+hm[1]]) { const bm = BM[+hm[1]]; S.sel = bm.cities.slice(); S.lat = bm.lat; S.lon = bm.lon; S.R = S.fitR * bm.zoom; } }
+  drawChart();
+  await setT(S.t);
+})();
+</script>

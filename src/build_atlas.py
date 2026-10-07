@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PAGES = [
     ("atlas.template.html", "city_views.json", "/*__DATA__*/[]", "city_atlas.html"),
     ("world.template.html", "world.json", "/*__DATA__*/{}", "city_world.html"),
+    ("globe.template.html", "globe.json", "/*__DATA__*/{}", "city_globe.html"),
 ]
 out_dir = ROOT / "dist"
 out_dir.mkdir(exist_ok=True)
