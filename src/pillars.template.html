@@ -30,112 +30,155 @@
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
-body { background: var(--bg); color: var(--ink); font-family: var(--font-ui); font-size: 14px; line-height: 1.45; padding-inline: 16px; padding-block: 18px 28px; }
-.wrap { max-width: 1280px; margin: 0 auto; display: grid; gap: 12px; }
-header { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 10px 24px; }
-h1 { font: 500 28px/1.1 var(--font-display); margin: 0; letter-spacing: -0.01em; }
-.sub { color: var(--muted); font-size: 13px; margin: 4px 0 0; max-width: 62ch; }
+html, body { height: 100%; }
+body { margin: 0; padding: 10px 14px; height: 100vh; height: 100dvh; overflow: hidden; background: var(--bg); color: var(--ink); font-family: var(--font-ui); font-size: 14px; line-height: 1.4; }
+.wrap { position: relative; height: 100%; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 8px; min-height: 0; }
+header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+h1 { font: 500 22px/1.1 var(--font-display); margin: 0; letter-spacing: -0.01em; white-space: nowrap; }
 .jump { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-.jump button, .jump input { font: 500 13px var(--font-ui); color: var(--ink); background: transparent; border: 1px solid var(--rule); border-radius: 4px; padding: 7px 12px; }
-.jump button { cursor: pointer; }
-.jump button:hover { border-color: var(--accent); }
-.jump input { width: 190px; background: var(--panel); font-weight: 400; }
+.jump button, .jump input, .hbtn { font: 500 12.5px var(--font-ui); color: var(--ink); background: transparent; border: 1px solid var(--rule); border-radius: 4px; padding: 6px 10px; }
+.jump button, .hbtn { cursor: pointer; }
+.jump button:hover, .hbtn:hover { border-color: var(--accent); }
+.jump input { width: 150px; background: var(--panel); font-weight: 400; }
+.hbtn { margin-left: auto; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.stage { position: relative; background: var(--space); border: 1px solid var(--rule); border-radius: 6px; height: clamp(400px, 74vh, 800px); width: 100%; overflow: hidden; touch-action: none; cursor: grab; }
+.main { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 10px; min-height: 0; }
+.stage { position: relative; background: var(--space); border: 1px solid var(--rule); border-radius: 6px; min-height: 0; overflow: hidden; touch-action: none; cursor: grab; }
 .stage.drag { cursor: grabbing; }
 .stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 #ov { pointer-events: none; }
-.yearbadge { position: absolute; left: 14px; top: 8px; pointer-events: none; font: 400 54px/1 var(--font-display); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; color: var(--ink); text-shadow: 0 0 10px var(--halo), 0 0 3px var(--halo); }
+.yearbadge { position: absolute; left: 14px; top: 6px; pointer-events: none; font: 400 46px/1 var(--font-display); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; color: var(--ink); text-shadow: 0 0 10px var(--halo), 0 0 3px var(--halo); }
 .tools { position: absolute; top: 8px; right: 8px; display: flex; flex-direction: column; gap: 4px; }
 .tools button { width: 30px; height: 30px; font: 500 15px var(--font-ui); line-height: 1; color: var(--ink); background: var(--panel); border: 1px solid var(--rule); border-radius: 4px; cursor: pointer; }
 .tools button:hover { border-color: var(--accent); }
-.hint { position: absolute; left: 14px; bottom: 10px; font: 11px var(--font-data); color: var(--muted); pointer-events: none; text-shadow: 0 0 4px var(--halo); }
+.tools .narrow { display: none; }
+.info { position: absolute; left: 14px; top: 62px; width: min(262px, calc(100% - 28px)); max-height: calc(100% - 104px); overflow: auto; background: color-mix(in srgb, var(--panel) 90%, transparent); border: 1px solid var(--rule); border-radius: 6px; font-size: 12.5px; cursor: default; backdrop-filter: blur(6px); }
+.info button { display: flex; justify-content: space-between; align-items: center; width: 100%; padding: 8px 12px; font: 600 11px var(--font-ui); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); background: transparent; border: 0; cursor: pointer; }
+.info.collapsed #infobody { display: none; }
+.info.collapsed .chev { transform: rotate(-90deg); }
+#infobody { padding: 0 12px 10px; display: grid; gap: 2px; }
+#infobody .k { margin-top: 6px; font: 600 10.5px var(--font-ui); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+#infobody .d { color: var(--muted); }
+#infobody .small { font-size: 11px; margin-top: 6px; }
+#infobody .top { list-style: none; margin: 2px 0 0; padding: 0; display: grid; gap: 1px; }
+#infobody .top li { display: flex; justify-content: space-between; gap: 10px; }
+#infobody .top b { font: 500 12px var(--font-data); font-variant-numeric: tabular-nums; }
+.hint { position: absolute; left: 14px; bottom: 8px; font: 11px var(--font-data); color: var(--muted); pointer-events: none; text-shadow: 0 0 4px var(--halo); }
 .nogl { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; color: var(--muted); }
 .tip { position: absolute; pointer-events: none; background: var(--panel); border: 1px solid var(--rule); border-radius: 4px; padding: 6px 9px; font-size: 12px; max-width: 240px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18); }
 .tip b { font-weight: 600; }
 .tip span { display: block; color: var(--muted); font-family: var(--font-data); font-size: 11px; }
-.dials { display: flex; flex-wrap: wrap; gap: 8px 28px; align-items: center; color: var(--muted); font-size: 12.5px; }
-.dials label { display: flex; align-items: center; gap: 10px; }
 .seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 4px; overflow: hidden; }
 .seg button { font: 500 12.5px var(--font-ui); color: var(--ink); background: transparent; border: 0; padding: 6px 12px; cursor: pointer; }
 .seg button + button { border-left: 1px solid var(--rule); }
 .seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
-.dials input[type="range"] { width: 160px; height: 22px; }
-.dials output { font: 12px var(--font-data); color: var(--ink); min-width: 3.2em; }
-.timebar { display: grid; gap: 4px; }
-.timerow { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px; align-items: center; }
-.play { font: 500 13px var(--font-ui); min-width: 78px; padding: 8px 12px; color: var(--accent-ink); background: var(--accent); border: 0; border-radius: 4px; cursor: pointer; }
-input[type="range"] { width: 100%; accent-color: var(--accent); height: 26px; margin: 0; }
-.ticks { position: relative; height: 16px; margin-left: 90px; font: 10.5px var(--font-data); color: var(--muted); }
-.ticks span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
-.ticks span:first-child { transform: none; }
-.ticks span:last-child { transform: translateX(-100%); }
-.lower { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 12px; align-items: start; }
-.card { background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 14px; min-width: 0; }
-.card h2 { font: 600 11px var(--font-ui); text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 0 0 8px; }
-.chart { width: 100%; height: 220px; display: block; cursor: ew-resize; touch-action: none; }
-.chart text { font: 10.5px var(--font-data); fill: var(--muted); }
-.rows { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.side { display: flex; flex-direction: column; gap: 8px; min-height: 0; min-width: 0; }
+.card { background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 10px 12px; min-width: 0; }
+.card h2 { font: 600 10.5px var(--font-ui); text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 0 0 6px; }
+.card.sel { max-height: 34%; overflow: auto; flex: 0 1 auto; }
+.card.chartcard { flex: 1 1 0; min-height: 130px; display: flex; flex-direction: column; }
+.chartwrap { flex: 1; min-height: 0; }
+.chart { width: 100%; height: 100%; display: block; cursor: ew-resize; touch-action: none; }
+.chart text { font: 10px var(--font-data); fill: var(--muted); }
+.rows { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
 .rows li { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto auto; gap: 8px; align-items: baseline; }
 .rows .sw { width: 10px; height: 10px; border-radius: 2px; align-self: center; }
-.rows .pop { font: 500 13px var(--font-data); font-variant-numeric: tabular-nums; }
-.rows .nm { overflow-wrap: anywhere; }
+.rows .pop { font: 500 12.5px var(--font-data); font-variant-numeric: tabular-nums; }
+.rows .nm { overflow-wrap: anywhere; font-size: 13px; }
 .rows .nm small { color: var(--muted); }
 .rows li.off { color: var(--muted); }
 .rows button { font: 500 14px var(--font-ui); line-height: 1; color: var(--muted); background: transparent; border: 0; cursor: pointer; padding: 2px 4px; }
 .rows button:hover { color: var(--ink); }
-.empty { color: var(--muted); font-size: 13px; margin: 0; }
-.ramp { height: 10px; border-radius: 2px; border: 1px solid var(--rule); }
-.ramplab { display: flex; justify-content: space-between; font: 10.5px var(--font-data); color: var(--muted); margin-top: 3px; }
-.note { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
-.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 11.5px; color: var(--muted); margin-top: 8px; }
-footer { color: var(--muted); font-size: 12px; max-width: 120ch; }
-footer p { margin: 0 0 6px; }
-footer a { color: var(--accent); }
-@media (max-width: 860px) {
-  .lower { grid-template-columns: minmax(0, 1fr); }
-  .yearbadge { font-size: 38px; }
-  .ticks { margin-left: 0; }
-  .timerow { grid-template-columns: minmax(0, 1fr); }
-  .play { width: 100%; }
-  .stage { height: clamp(360px, 64vh, 580px); }
+.empty { color: var(--muted); font-size: 12.5px; margin: 0; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11px; color: var(--muted); margin-top: 4px; min-height: 0; }
+.legend:empty { display: none; }
+.dial { display: grid; grid-template-columns: 4.2em minmax(0, 1fr) 3em; gap: 8px; align-items: center; color: var(--muted); font-size: 12px; }
+.dial input[type="range"] { height: 20px; }
+.dial output { font: 11.5px var(--font-data); color: var(--ink); text-align: right; }
+.ramp { height: 8px; border-radius: 2px; border: 1px solid var(--rule); margin-top: 6px; }
+.ramplab { display: flex; justify-content: space-between; font: 10px var(--font-data); color: var(--muted); margin-top: 2px; }
+.timebar { display: grid; gap: 0; }
+.timerow { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px; align-items: center; }
+.play { font: 500 13px var(--font-ui); min-width: 78px; padding: 6px 12px; color: var(--accent-ink); background: var(--accent); border: 0; border-radius: 4px; cursor: pointer; }
+input[type="range"] { width: 100%; accent-color: var(--accent); height: 24px; margin: 0; }
+.ticks { position: relative; height: 14px; margin-left: 90px; font: 10px var(--font-data); color: var(--muted); }
+.ticks span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+.ticks span:first-child { transform: none; }
+.ticks span:last-child { transform: translateX(-100%); }
+.about { position: absolute; z-index: 20; right: 0; top: 40px; width: min(600px, 100%); max-height: calc(100% - 52px); overflow: auto; background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 14px 16px; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.28); font-size: 12.5px; color: var(--muted); }
+.about h2 { font: 600 11px var(--font-ui); text-transform: uppercase; letter-spacing: 0.08em; margin: 0 0 6px; color: var(--ink); }
+.about p { margin: 0 0 8px; }
+.about a { color: var(--accent); }
+@media (max-width: 900px) {
+  h1 { font-size: 18px; }
+  .jump input { width: 120px; }
+  .main { grid-template-columns: minmax(0, 1fr); }
+  .side { position: absolute; z-index: 10; right: 0; top: 0; bottom: 0; width: min(340px, 92%); padding: 8px; background: var(--bg); border-left: 1px solid var(--rule); transform: translateX(105%); transition: transform 0.2s; }
+  .side.open { transform: none; }
+  .tools .narrow { display: block; }
+  .yearbadge { font-size: 34px; }
+  .info { top: 48px; }
+  .timerow { grid-template-columns: auto minmax(0, 1fr); gap: 8px; }
+  .play { min-width: 64px; }
+  .ticks { margin-left: 72px; }
 }
+@media (prefers-reduced-motion: reduce) { .side { transition: none; } }
 </style>
 
 <div class="wrap">
   <header>
-    <div>
-      <h1>CitySim Globe 3D</h1>
-      <p class="sub">Each pillar is a city: height is the square root of its population, thickness is its area. Drag to move, right-drag or Shift-drag to tilt and turn, scroll to zoom.</p>
-    </div>
+    <h1>CitySim Globe 3D</h1>
     <div class="jump" id="jump">
       <button type="button" data-b="-1">Whole globe</button>
       <input id="search" list="cities" placeholder="Find a city…" aria-label="Find a city" autocomplete="off">
       <datalist id="cities"></datalist>
     </div>
+    <span class="seg" id="layer" role="group" aria-label="Base layer"><button type="button" data-l="1" aria-pressed="true">Political</button><button type="button" data-l="0" aria-pressed="false">Plain</button></span>
+    <button type="button" class="hbtn" id="aboutbtn" aria-expanded="false" aria-controls="about">About</button>
   </header>
 
-  <div class="stage" id="stage" tabindex="0" aria-label="3D globe with city pillars. Arrow keys move, plus and minus zoom, Page Up and Page Down tilt.">
-    <canvas id="gl"></canvas>
-    <canvas id="ov"></canvas>
-    <div class="yearbadge" id="year">2357 BCE</div>
-    <div class="tools">
-      <button id="zin" aria-label="Zoom in">+</button>
-      <button id="zout" aria-label="Zoom out">−</button>
-      <button id="tup" aria-label="Tilt more" title="Tilt more">⤓</button>
-      <button id="tdn" aria-label="Tilt less" title="Tilt less">⤒</button>
-      <button id="north" aria-label="North up" title="North up">N</button>
-      <button id="zfit" aria-label="Whole globe" title="Whole globe">⌂</button>
+  <div class="main" id="main">
+    <div class="stage" id="stage" tabindex="0" aria-label="3D globe with city pillars. Arrow keys move, plus and minus zoom, Page Up and Page Down tilt.">
+      <canvas id="gl"></canvas>
+      <canvas id="ov"></canvas>
+      <div class="yearbadge" id="year">2357 BCE</div>
+      <div class="tools">
+        <button id="zin" aria-label="Zoom in">+</button>
+        <button id="zout" aria-label="Zoom out">−</button>
+        <button id="tup" aria-label="Tilt more" title="Tilt more">⤓</button>
+        <button id="tdn" aria-label="Tilt less" title="Tilt less">⤒</button>
+        <button id="north" aria-label="North up" title="North up">N</button>
+        <button id="zfit" aria-label="Whole globe" title="Whole globe">⌂</button>
+        <button id="sidebtn" class="narrow" aria-label="Cities and chart" title="Cities and chart">☰</button>
+      </div>
+      <aside class="info" id="info" aria-label="Information about the area in view">
+        <button type="button" id="infotoggle" aria-expanded="true"><span>Area in view</span><span class="chev" aria-hidden="true">▾</span></button>
+        <div id="infobody" aria-live="polite"></div>
+      </aside>
+      <div class="hint" id="hint"></div>
+      <div class="tip" id="tip" hidden></div>
+      <div class="nogl" id="nogl" hidden>This page needs WebGL 2, which this browser did not give it.</div>
     </div>
-    <div class="hint" id="hint"></div>
-    <div class="tip" id="tip" hidden></div>
-    <div class="nogl" id="nogl" hidden>This page needs WebGL 2, which this browser did not give it.</div>
-  </div>
 
-  <div class="dials">
-    <span class="seg" id="layer" role="group" aria-label="Base layer"><button type="button" data-l="1" aria-pressed="true">Political</button><button type="button" data-l="0" aria-pressed="false">Plain</button></span>
-    <label for="hmul">Pillar height <input type="range" id="hmul" min="0.2" max="4" step="0.05" value="1"><output id="hout">1.0×</output></label>
-    <label for="tmul">Thickness <input type="range" id="tmul" min="0.5" max="12" step="0.1" value="3"><output id="tout">3.0×</output></label>
+    <div class="side" id="side">
+      <section class="card sel" aria-live="polite">
+        <h2>Selected</h2>
+        <ul class="rows" id="rows"></ul>
+        <p class="empty" id="empty">Click a pillar, search for a city, or use a jump button.</p>
+      </section>
+      <section class="card chartcard">
+        <h2>Population over time</h2>
+        <div class="chartwrap"><svg class="chart" id="chart" role="img" aria-label="Population of the selected cities over time, log scale"></svg></div>
+        <div class="legend" id="clegend"></div>
+      </section>
+      <section class="card">
+        <h2>Pillars</h2>
+        <label class="dial" for="hmul">Height <input type="range" id="hmul" min="0.2" max="4" step="0.05" value="1"><output id="hout">1.0×</output></label>
+        <label class="dial" for="tmul">Thickness <input type="range" id="tmul" min="0.5" max="12" step="0.1" value="3"><output id="tout">3.0×</output></label>
+        <div class="ramp" id="ramp"></div>
+        <div class="ramplab"><span>10k</span><span>100k</span><span>1M</span><span>30M</span></div>
+      </section>
+    </div>
   </div>
 
   <div class="timebar">
@@ -146,31 +189,14 @@ footer a { color: var(--accent); }
     <div class="ticks" id="ticks" aria-hidden="true"></div>
   </div>
 
-  <div class="lower">
-    <section class="card">
-      <h2>Population of selected cities</h2>
-      <svg class="chart" id="chart" role="img" aria-label="Population of the selected cities over time, log scale"></svg>
-      <div class="legend" id="clegend"></div>
-    </section>
-    <div style="display:grid;gap:12px;min-width:0">
-      <section class="card" aria-live="polite">
-        <h2>Selected</h2>
-        <ul class="rows" id="rows"></ul>
-        <p class="empty" id="empty">Click a pillar, pick a city from the search box, or use a jump button.</p>
-      </section>
-      <section class="card">
-        <h2>Pillar colour</h2>
-        <div class="ramp" id="ramp"></div>
-        <div class="ramplab"><span>10k</span><span>100k</span><span>1M</span><span>30M</span></div>
-        <p class="note">Colour is population on a log scale. Heights are exaggerated, about 125 km per √(1M people) at 1×; thickness is exaggerated too (the slider), with a floor of a couple of pixels so small cities stay visible.</p>
-      </section>
-    </div>
+  <div class="about" id="about" hidden>
+    <h2>How to read this</h2>
+    <p>Each pillar is a city: height is the square root of its population (about 125 km per √1M people at 1×) and thickness is its area, both exaggerated, with a floor of a couple of pixels so small cities stay visible. Colour is population on a log scale. Drag to move, right-drag or Shift-drag to tilt and turn, scroll to zoom.</p>
+    <h2>Data</h2>
+    <p>City populations come from Stadestér 1.0 (Reba et al., Chandler, Modelski, Buringh and others): the 4,476 cities that ever reach 100,000, as whole urban agglomerations, interpolated in log space between observations. A city is hidden before its first record and held at its last value (shown dimmer) after the table ends, about 2000. City area is measured from about 1800; before that it is modelled as population divided by the median city density of 1800 (about 18,000 people per km²), so earlier pillars are estimates and the tooltip says which. "People in view" comes from a 55 km population grid, so it is rough in close-ups.</p>
+    <p>Coastlines are Natural Earth 50 m land, drawn at 18 km resolution. The Political layer is Cliopatria (Seshat Global History Databank, CC BY 4.0): 1,637 polities, as snapshots every 100 years to 1000 CE, then every 50 and every 25 years, at the same 18 km resolution. A polity keeps its colour, a successor inherits the colour of the polity it overlaps most, and neighbours never share one. Borders are approximate, and where polities overlap the smaller one is drawn on top.</p>
+    <p>The time axis is stretched: 2357 BCE–0, 0–1700 and 1700–2025 get 30%, 30% and 40% of the width. Data: <a href="https://doi.org/10.5281/zenodo.17180328" target="_blank" rel="noopener">Stadestér 1.0 (Zenodo, MIT)</a>.</p>
   </div>
-
-  <footer>
-    <p>City populations come from Stadestér 1.0 (Reba et al., Chandler, Modelski, Buringh and others): the 4,476 cities that ever reach 100,000, as whole urban agglomerations, interpolated in log space between observations. A city is hidden before its first record and held at its last value (shown dimmer) after the table ends, about 2000. Coastlines are Natural Earth 50 m land, drawn at 18 km resolution. The Political layer is Cliopatria (Seshat Global History Databank, CC BY 4.0): 1,637 polities, shown as snapshots every 100 years to 1000 CE, then every 50 and every 25 years, at the same 18 km resolution. Colours are arbitrary per polity, borders are approximate, and where polities overlap the smaller one is drawn on top.</p>
-    <p>City area is measured from about 1800. Before that it is modelled as population divided by the median city density of 1800 (about 18,000 people per km²), so earlier pillars are estimates; the tooltip says which. Time axis is stretched: 2357 BCE–0, 0–1700 and 1700–2025 get 30%, 30% and 40% of the width. Data: <a href="https://doi.org/10.5281/zenodo.17180328" target="_blank" rel="noopener">Stadestér 1.0 (Zenodo, MIT)</a>.</p>
-  </footer>
 </div>
 
 <script>
@@ -499,6 +525,7 @@ void main() {
     gl.uniform3fv(gl.getUniformLocation(pillarP, "uLight"), L); gl.uniform3fv(gl.getUniformLocation(pillarP, "uLandC"), theme.land);
     gl.bindVertexArray(vaoPil); gl.drawArraysInstanced(gl.TRIANGLES, 0, 30, NC);
     overlay();
+    scheduleInfo();
   }
 
   // ---- overlay: labels, scale bar, hint (2D canvas)
@@ -546,6 +573,70 @@ void main() {
     for (const cv of [glc, ov]) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
     render();
   }
+
+  // ---- info window: numbers for the ground currently in view
+  const G = DATA.popgrid, GW = G.w, GH = G.h, GN = GW * GH, GF = G.frames, GL = G.logMax;
+  const gx = new Float32Array(GN * 3), garea = new Float32Array(GH), isLand = new Uint8Array(GN), polIdx = new Int32Array(GN);
+  {
+    const f = DATA.land.w / GW, g = PW / GW; // land mask and polity grid are 3x finer than the population grid
+    for (let y = 0; y < GH; y++) {
+      const la = (90 - (y + 0.5) * 180 / GH) * RAD, cl = Math.cos(la), sl = Math.sin(la);
+      garea[y] = (R_KM * Math.PI / GH) * (R_KM * 2 * Math.PI / GW) * cl;
+      for (let x = 0; x < GW; x++) {
+        const lo = (-180 + (x + 0.5) * 360 / GW) * RAD, k = y * GW + x;
+        gx[k * 3] = cl * Math.cos(lo); gx[k * 3 + 1] = cl * Math.sin(lo); gx[k * 3 + 2] = sl;
+        isLand[k] = mask[Math.floor((y + 0.5) * f) * DATA.land.w + Math.floor((x + 0.5) * f)] > 127 ? 1 : 0;
+        polIdx[k] = Math.floor((y + 0.5) * g) * PW + Math.floor((x + 0.5) * g);
+      }
+    }
+  }
+  const gridCache = new Map(), gridPending = new Map();
+  function loadGrid(i) {
+    if (gridCache.has(i)) return Promise.resolve(gridCache.get(i));
+    if (!gridPending.has(i)) gridPending.set(i, inflateB64(G.chunks[i]).then((a) => { gridCache.set(i, a); gridPending.delete(i); while (gridCache.size > 4) gridCache.delete(gridCache.keys().next().value); return a; }));
+    return gridPending.get(i);
+  }
+  const fmtBig = (p) => p >= 1e9 ? (p / 1e9).toFixed(2) + "B" : p >= 1e6 ? +(p / 1e6).toFixed(p >= 1e7 ? 0 : 1) + "M" : p >= 1e3 ? Math.round(p / 1e3) + "k" : String(Math.round(p));
+  const esc = (s) => s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  let infoTimer = 0, infoSeq = 0, worldKey = "", worldTotal = 0;
+  function scheduleInfo() { clearTimeout(infoTimer); infoTimer = setTimeout(updateInfo, 180); }
+  async function updateInfo() {
+    if ($("#info").classList.contains("collapsed") || !C) return;
+    const year = tToYear(S.t), seq = ++infoSeq;
+    let i = 0; while (i < GF.length - 2 && year >= GF[i + 1]) i++;
+    if (!gridCache.has(i) || !gridCache.has(i + 1)) { await Promise.all([loadGrid(i), loadGrid(i + 1)]); if (seq !== infoSeq) return; }
+    const A = gridCache.get(i), B = gridCache.get(i + 1), f = clamp((year - GF[i]) / (GF[i + 1] - GF[i]), 0, 1), k0 = GL / 255 * (1 - f), k1 = GL / 255 * f;
+    const m = C.VP, ex = C.eye, polOn = polArr && S.layer === 1;
+    const key = i + ":" + f.toFixed(3);
+    let pop = 0, area = 0, landArea = 0; const polA = new Map(), doWorld = key !== worldKey; let world = 0;
+    for (let k = 0; k < GN; k++) {
+      const v = A[k] * k0 + B[k] * k1, p = v < 0.3 ? 0 : Math.pow(10, v) - 1;
+      if (doWorld) world += p;
+      const o = k * 3, x = gx[o], y = gx[o + 1], z = gx[o + 2];
+      if (x * ex[0] + y * ex[1] + z * ex[2] < 1) continue; // below the horizon
+      const cx = m[0] * x + m[4] * y + m[8] * z + m[12], cy = m[1] * x + m[5] * y + m[9] * z + m[13], cw = m[3] * x + m[7] * y + m[11] * z + m[15];
+      if (cw <= 0 || cx > cw || cx < -cw || cy > cw || cy < -cw) continue;
+      const a = garea[(k / GW) | 0];
+      pop += p; area += a;
+      if (isLand[k]) { landArea += a; if (polOn) { const id = polArr[polIdx[k]]; polA.set(id, (polA.get(id) || 0) + a); } }
+    }
+    if (doWorld) { worldTotal = world; worldKey = key; }
+    const cities = S.shown, cityPop = cities.reduce((s, c) => s + c.p, 0);
+    const across = S.range < 1.2 ? `${Math.round(2 * S.range * Math.tan(FOV / 2) * (W / H) * R_KM).toLocaleString()} km across` : "a whole hemisphere";
+    let h = `<div class="k">Area in view</div><div>${across}<span class="d"> · ${Math.abs(S.lat).toFixed(1)}°${S.lat < 0 ? "S" : "N"} ${Math.abs(S.lon).toFixed(1)}°${S.lon < 0 ? "W" : "E"}</span></div>`;
+    h += `<div class="k">People</div><div>≈ ${fmtBig(pop)}<span class="d"> · ${worldTotal ? (100 * pop / worldTotal).toFixed(pop / worldTotal < 0.1 ? 1 : 0) : "–"}% of the world</span></div>`;
+    h += `<div class="k">Density</div><div>${landArea ? "≈ " + (pop / landArea < 10 ? (pop / landArea).toFixed(1) : Math.round(pop / landArea)) + " per km²" : "open water"}<span class="d"> · on land</span></div>`;
+    h += `<div class="k">Cities</div><div>${cities.length} with records<span class="d"> · ${fmtBig(cityPop)} people in them</span></div>`;
+    if (cities.length) h += `<ol class="top">${cities.slice(0, 5).map((c) => `<li><span>${esc(clean(CITIES[c.i].name))}</span><b>${fmtBig(c.p)}</b></li>`).join("")}</ol>`;
+    if (polOn && polA.size) {
+      const list = [...polA.entries()].sort((a, b) => b[1] - a[1]), tot = landArea || 1;
+      const named = list.filter(([id]) => id > 0), none = polA.get(0) || 0;
+      h += `<div class="k">Polities <span class="d">(${named.length} in view)</span></div><ol class="top">${named.slice(0, 4).map(([id, a]) => `<li><span>${esc(POL.polities[id - 1][0])}</span><b>${Math.round(100 * a / tot)}%</b></li>`).join("")}${none / tot > 0.05 ? `<li class="d"><span>no polity recorded</span><b>${Math.round(100 * none / tot)}%</b></li>` : ""}</ol>`;
+    } else if (S.layer !== 1) h += `<div class="d small">Switch to Political to see which polities hold the land.</div>`;
+    h += `<div class="d small">People come from a 55 km grid, so numbers are rough in close-ups.</div>`;
+    $("#infobody").innerHTML = h;
+  }
+  $("#infotoggle").addEventListener("click", () => { const el = $("#info"); el.classList.toggle("collapsed"); $("#infotoggle").setAttribute("aria-expanded", String(!el.classList.contains("collapsed"))); if (!el.classList.contains("collapsed")) updateInfo(); });
 
   // ---- selection panel + chart
   function updatePanel() {
@@ -733,6 +824,18 @@ void main() {
     select([i], true); flyTo(CITIES[i].lat, CITIES[i].lon, 0.2, 55, 0); e.target.value = "";
   });
   $("#ticks").innerHTML = [[START, `${-START} BCE`], [0, "0"], [1700, "1700"], [END, String(END)]].map(([y, l]) => `<span style="left:${yearToT(y) * 100}%">${l}</span>`).join("");
+
+  // small windows: start with the info card folded away so it doesn't cover the globe
+  if (innerWidth < 900 || innerHeight < 680) { $("#info").classList.add("collapsed"); $("#infotoggle").setAttribute("aria-expanded", "false"); }
+
+  // About popover and the narrow-screen drawer
+  const about = $("#about"), aboutBtn = $("#aboutbtn");
+  const setAbout = (on) => { about.hidden = !on; aboutBtn.setAttribute("aria-expanded", String(on)); };
+  aboutBtn.addEventListener("click", (e) => { e.stopPropagation(); setAbout(about.hidden); });
+  document.addEventListener("click", (e) => { if (!about.hidden && !about.contains(e.target)) setAbout(false); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") { setAbout(false); $("#side").classList.remove("open"); } });
+  $("#sidebtn").addEventListener("click", () => { $("#side").classList.toggle("open"); drawChart(); });
+  new ResizeObserver(() => drawChart()).observe($(".chartwrap"));
 
   const refreshTheme = () => { readTheme(); drawChart(); render(); };
   new ResizeObserver(() => { resize(); drawChart(); }).observe(stage);

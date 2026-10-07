@@ -47,6 +47,22 @@ def land_mask() -> tuple[str, int, int]:
     return base64.b64encode(zlib.compress(arr.tobytes(), 9)).decode(), arr.shape[1], arr.shape[0]
 
 
+GRID_BLOCK = 6  # 5' cells -> 30' (0.5 degree, ~55 km) cells for the "people in view" numbers
+GRID_LOG_MAX = 8.0
+
+
+def pop_grid() -> dict:
+    """Population per 0.5-degree cell for each snapshot, log10-quantized to uint8, one deflated chunk per frame (never drawn)."""
+    chunks = []
+    for y in bw.FRAMES:
+        a = bw.load_pop(y)
+        h, w = a.shape
+        s = a.reshape(h // GRID_BLOCK, GRID_BLOCK, w // GRID_BLOCK, GRID_BLOCK).sum(axis=(1, 3))
+        q = np.clip(np.round(np.log10(s + 1) / GRID_LOG_MAX * 255), 0, 255).astype(np.uint8)
+        chunks.append(base64.b64encode(zlib.compress(q.tobytes(), 9)).decode())
+    return {"w": 4320 // GRID_BLOCK, "h": 2160 // GRID_BLOCK, "frames": bw.FRAMES, "logMax": GRID_LOG_MAX, "chunks": chunks}
+
+
 def main() -> None:
     hist = json.load(open(bw.JSON_DIR / "stadester.json"))
     ghsl = json.load(open(bw.JSON_DIR / "stadester_ghsl.json"))
@@ -94,7 +110,7 @@ def main() -> None:
     bookmarks = [{**b, "cities": [index[k] for k in b["cities"]], "range": 0.35, "tilt": 55} for b in bw.BOOKMARKS]
     political = json.load(open(ROOT / "data/processed/political.json"))  # run build_political.py first
     doc = {"land": {"w": lw, "h": lh, "data": land}, "dens": dens, "cities": cities, "bookmarks": bookmarks,
-           "political": political}
+           "political": political, "popgrid": pop_grid()}
     OUT.write_text(json.dumps(doc, ensure_ascii=False, separators=(",", ":")))
     print("wrote", OUT, f"{OUT.stat().st_size/1e6:.1f} MB  (land mask {len(land)/1e3:.0f} kB)")
 
