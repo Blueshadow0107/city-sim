@@ -102,7 +102,7 @@ h1 { font: 500 22px/1.1 var(--font-display); margin: 0; letter-spacing: -0.01em;
 .empty { color: var(--muted); font-size: 12.5px; margin: 0; }
 .legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11px; color: var(--muted); margin-top: 4px; min-height: 0; }
 .legend:empty { display: none; }
-.dial { display: grid; grid-template-columns: 4.2em minmax(0, 1fr) 3em; gap: 8px; align-items: center; color: var(--muted); font-size: 12px; }
+.dial { display: grid; grid-template-columns: auto minmax(0, 1fr) 3em; gap: 8px; align-items: center; color: var(--muted); font-size: 12px; }
 .dial input[type="range"] { height: 20px; }
 .dial output { font: 11.5px var(--font-data); color: var(--ink); text-align: right; }
 .ramp { height: 8px; border-radius: 2px; border: 1px solid var(--rule); margin-top: 6px; }
@@ -190,6 +190,11 @@ input[type="range"] { width: 100%; accent-color: var(--accent); height: 24px; ma
         <div class="ramp" id="ramp"></div>
         <div class="ramplab"><span>10k</span><span>100k</span><span>1M</span><span>30M</span></div>
       </section>
+      <section class="card">
+        <h2>Routes</h2>
+        <span class="seg" id="routemode" role="group" aria-label="Route layer"><button type="button" data-r="1" aria-pressed="true">Model</button><button type="button" data-r="0" aria-pressed="false">Off</button></span>
+        <label class="dial" for="nexp" title="Gravity: pop × pop / distance^n. Low n links far cities, high n keeps links local.">Exponent n <input type="range" id="nexp" min="0.5" max="3" step="0.1" value="2"><output id="nout">2.0</output></label>
+      </section>
     </div>
   </div>
 
@@ -208,6 +213,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); height: 24px; ma
     <p>City populations come from Stadestér 1.0 (Reba et al., Chandler, Modelski, Buringh and others): the 4,476 cities that ever reach 100,000, as whole urban agglomerations, interpolated in log space between observations. A city is hidden before its first record and held at its last value (shown dimmer) after the table ends, about 2000. City area is measured from about 1800; before that it is modelled as population divided by the median city density of 1800 (about 18,000 people per km²), so earlier pillars are estimates and the tooltip says which. "People in view" comes from a 55 km population grid, so it is rough in close-ups.</p>
     <p>Coastlines are Natural Earth 50 m land, drawn at 18 km resolution. The Political layer is Cliopatria (Seshat Global History Databank, CC BY 4.0): 1,637 polities, as snapshots every 100 years to 1000 CE, then every 50 and every 25 years, at the same 18 km resolution. A polity keeps its colour, a successor inherits the colour of the polity it overlaps most, and neighbours never share one. Borders are approximate, and where polities overlap the smaller one is drawn on top.</p>
     <p>The Religion layer shows the religion, not the polity: neighbouring polities of the same religion merge into one region and borders are drawn only where the religion changes. Each polity is coloured by the religion families Wikidata records for it (property "religion or worldview", 421 of the 1,637 polities, about 39% of polity-covered land on average). A polity that lists several religions, or inherits several, is drawn in diagonal stripes (two religions) or a mosaic of colour tiles (three or more). A polity with no record inherits religions only from a clearly continuous predecessor (its territory and the predecessor's must overlap by at least 40% of their combined area, so a small successor does not inherit from a vast empire it came out of; at most two families, each covering at least 30% of the polity; and no more than three successions in a row) and is drawn faded; the "Show inferred" box hides that fill, leaving only recorded religions. With inheritance about 51% of land is coloured. That is an assumption of continuity, not a record: conquests and conversions are not modelled and there is nothing before roughly 1800 BCE. Families are my grouping of 108 Wikidata labels into nine. In the info card, people in a striped polity are split evenly between its religions, and the figures are people first, land second.</p>
+    <p>Model routes are not historical roads. For the biggest cities in view (up to 110), each pair gets a gravity weight, population × population ÷ distance<sup>n</sup>, with n from the slider (low n links far cities, high n keeps links local). The strongest links are taken first, but a link that would only join cities already connected is kept only for the strongest handful (a spanning skeleton plus about half as many extra links), so every reachable city has at least one route. Routes avoid open sea: beyond a 500 km strait the path must be at least two thirds land. Thickness shows relative strength; arcs are lifted so they read above the pillars.</p>
     <p>The time axis is stretched: 2357 BCE–0, 0–1700 and 1700–2025 get 30%, 30% and 40% of the width. Data: <a href="https://doi.org/10.5281/zenodo.17180328" target="_blank" rel="noopener">Stadestér 1.0 (Zenodo, MIT)</a>.</p>
   </div>
 </div>
@@ -268,7 +274,7 @@ const DATA = /*__DATA__*/{};
   function mul(a, b) { const o = new Float32Array(16); for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) { let s = 0; for (let k = 0; k < 4; k++) s += a[k * 4 + r] * b[c * 4 + k]; o[c * 4 + r] = s; } return o; }
 
   // ---- state
-  const S = { t: 0, lat: 28, lon: 100, head: 0, tilt: 0, range: 2.9, sel: [], hover: -1, hMul: 1, tMul: 3, shown: [], layer: 1, hoverMask: 0, showInf: true };
+  const S = { t: 0, lat: 28, lon: 100, head: 0, tilt: 0, range: 2.9, sel: [], hover: -1, hMul: 1, tMul: 3, shown: [], layer: 1, hoverMask: 0, showInf: true, routes: 1, n: 2 };
   const FOV = 35 * RAD, RANGE_MIN = 0.012, RANGE_MAX = 3.0;
   const stage = $("#stage"), glc = $("#gl"), ov = $("#ov"), octx = ov.getContext("2d"), tip = $("#tip");
   let W = 1, H = 1, dpr = 1;
@@ -592,7 +598,7 @@ void main() {
     gl.uniform3fv(gl.getUniformLocation(pillarP, "uLight"), L); gl.uniform3fv(gl.getUniformLocation(pillarP, "uLandC"), theme.land);
     gl.bindVertexArray(vaoPil); gl.drawArraysInstanced(gl.TRIANGLES, 0, 30, NC);
     overlay();
-    scheduleInfo();
+    scheduleInfo(); scheduleRoutes();
   }
 
   // ---- overlay: labels, scale bar, hint (2D canvas)
@@ -613,6 +619,7 @@ void main() {
     }
     vis.sort((a, b) => b.p - a.p);
     S.shown = vis;
+    drawRoutes();
     // labels: the biggest few, more as you zoom in
     const K = Math.round(clamp(10 / Math.pow(S.range, 0.85), 6, 90));
     octx.font = "500 11.5px " + css("--font-ui"); const boxes = []; let nLab = 0;
@@ -640,6 +647,66 @@ void main() {
     for (const cv of [glc, ov]) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
     render();
   }
+
+  // ---- model routes: gravity links between the biggest cities in view, minimum spanning skeleton first
+  const LW = DATA.land.w, LH = DATA.land.h;
+  const onLand = (la, lo) => mask[clamp(Math.floor((0.5 - la / Math.PI) * LH), 0, LH - 1) * LW + (((Math.floor((lo / (2 * Math.PI) + 0.5) * LW) % LW) + LW) % LW)] > 127;
+  const unit = (c) => { const cl = Math.cos(c.la); return [cl * Math.cos(c.lo), cl * Math.sin(c.lo), Math.sin(c.la)]; };
+  function greatCircle(a, b, t, Om) { const s = Math.sin(Om); if (s < 1e-9) return a; const k0 = Math.sin((1 - t) * Om) / s, k1 = Math.sin(t * Om) / s; return [a[0] * k0 + b[0] * k1, a[1] * k0 + b[1] * k1, a[2] * k0 + b[2] * k1]; }
+  let routes = [], routeKey = "", routeTimer = 0;
+  function scheduleRoutes() { clearTimeout(routeTimer); routeTimer = setTimeout(computeRoutes, 200); }
+  function computeRoutes() {
+    const ids = S.routes ? S.shown.slice(0, 110).map((m) => m.i) : [];
+    const key = `${S.routes}|${S.n}|${Math.round(tToYear(S.t))}|${ids.join(",")}`;
+    if (key === routeKey) return;
+    routeKey = key;
+    const N = ids.length, V = ids.map((i) => unit(CITIES[i])), pop = ids.map((i) => P.pop[i]);
+    const cand = [];
+    for (let a = 0; a < N; a++) for (let b = a + 1; b < N; b++) {
+      const Om = Math.acos(clamp(dot(V[a], V[b]), -1, 1)), d = Om * R_KM;
+      if (d < 40) continue; // same urban area
+      if (d > 500) { // beyond a short strait the way must be mostly overland
+        let land = 0; for (let k = 1; k <= 12; k++) { const p = greatCircle(V[a], V[b], k / 13, Om); if (onLand(Math.asin(clamp(p[2], -1, 1)), Math.atan2(p[1], p[0]))) land++; }
+        if (land < 8) continue;
+      }
+      cand.push({ a, b, d, Om, w: pop[a] * pop[b] / Math.pow(d / 1000, S.n) });
+    }
+    cand.sort((x, y) => y.w - x.w);
+    const parent = ids.map((_, k) => k), find = (k) => { while (parent[k] !== k) { parent[k] = parent[parent[k]]; k = parent[k]; } return k; };
+    const out = []; let extra = Math.round(0.5 * N);
+    for (const e of cand) { // strongest links first: skeleton edges join separate components, then a few extra strong links
+      const ra = find(e.a), rb = find(e.b);
+      if (ra !== rb) { parent[ra] = rb; out.push(e); }
+      else if (extra > 0) { out.push(e); extra--; }
+    }
+    const wmax = out.length ? out[0].w : 1;
+    routes = out.map((e) => ({ ...e, i: ids[e.a], j: ids[e.b], va: V[e.a], vb: V[e.b], s: clamp(Math.log10(e.w / wmax) / 6 + 1, 0.05, 1) }));
+    render(); scheduleInfo();
+  }
+  function drawRoutes() {
+    if (!S.routes || !routes.length || !C) return;
+    const ex = C.eye;
+    octx.save(); octx.lineCap = "round"; octx.strokeStyle = css("--ink");
+    for (const r of routes) {
+      octx.globalAlpha = 0.25 + 0.55 * r.s; octx.lineWidth = 0.8 + 3.2 * r.s;
+      octx.beginPath(); let pen = false;
+      for (let k = 0; k <= 18; k++) {
+        const t = k / 18, g = greatCircle(r.va, r.vb, t, r.Om), lift = 1.0008 + 0.18 * r.Om * Math.sin(Math.PI * t);
+        const q = toScreen([g[0] * lift, g[1] * lift, g[2] * lift]);
+        if (!q || dot(g, ex) < 0.995) { pen = false; continue; }
+        if (pen) octx.lineTo(q[0], q[1]); else octx.moveTo(q[0], q[1]);
+        pen = true;
+      }
+      octx.stroke();
+    }
+    octx.restore();
+  }
+  $("#routemode").addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    S.routes = +b.dataset.r; document.querySelectorAll("#routemode button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    routeKey = ""; computeRoutes(); render();
+  });
+  $("#nexp").addEventListener("input", (e) => { S.n = +e.target.value; $("#nout").textContent = S.n.toFixed(1); computeRoutes(); });
 
   // ---- info window: numbers for the ground currently in view
   const G = DATA.popgrid, GW = G.w, GH = G.h, GN = GW * GH, GF = G.frames, GL = G.logMax;
@@ -702,6 +769,10 @@ void main() {
     h += `<div class="k">Density</div><div>${landArea ? "≈ " + (pop / landArea < 10 ? (pop / landArea).toFixed(1) : Math.round(pop / landArea)) + " per km²" : "open water"}<span class="d"> · on land</span></div>`;
     h += `<div class="k">Cities</div><div>${cities.length} with records<span class="d"> · ${fmtBig(cityPop)} people in them</span></div>`;
     if (cities.length) h += `<ol class="top">${cities.slice(0, 5).map((c) => `<li><span>${esc(clean(CITIES[c.i].name))}</span><b>${fmtBig(c.p)}</b></li>`).join("")}</ol>`;
+    if (S.routes && routes.length) {
+      const top = routes[0];
+      h += `<div class="k">Routes</div><div>${routes.length} model links<span class="d"> · strongest ${esc(clean(CITIES[top.i].name))} – ${esc(clean(CITIES[top.j].name))}</span></div>`;
+    }
     if (polOn && polA.size) {
       const list = [...polA.entries()].sort((a, b) => b[1] - a[1]), tot = landArea || 1;
       const named = list.filter(([id]) => id > 0), none = polA.get(0) || 0;
