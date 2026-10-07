@@ -56,6 +56,10 @@ h1 { font: 500 28px/1.1 var(--font-display); margin: 0; letter-spacing: -0.01em;
 .tip span { display: block; color: var(--muted); font-family: var(--font-data); font-size: 11px; }
 .dials { display: flex; flex-wrap: wrap; gap: 8px 28px; align-items: center; color: var(--muted); font-size: 12.5px; }
 .dials label { display: flex; align-items: center; gap: 10px; }
+.seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 4px; overflow: hidden; }
+.seg button { font: 500 12.5px var(--font-ui); color: var(--ink); background: transparent; border: 0; padding: 6px 12px; cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--rule); }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
 .dials input[type="range"] { width: 160px; height: 22px; }
 .dials output { font: 12px var(--font-data); color: var(--ink); min-width: 3.2em; }
 .timebar { display: grid; gap: 4px; }
@@ -129,6 +133,7 @@ footer a { color: var(--accent); }
   </div>
 
   <div class="dials">
+    <span class="seg" id="layer" role="group" aria-label="Base layer"><button type="button" data-l="1" aria-pressed="true">Political</button><button type="button" data-l="0" aria-pressed="false">Plain</button></span>
     <label for="hmul">Pillar height <input type="range" id="hmul" min="0.2" max="4" step="0.05" value="1"><output id="hout">1.0×</output></label>
     <label for="tmul">Thickness <input type="range" id="tmul" min="0.5" max="12" step="0.1" value="3"><output id="tout">3.0×</output></label>
   </div>
@@ -163,7 +168,7 @@ footer a { color: var(--accent); }
   </div>
 
   <footer>
-    <p>City populations come from Stadestér 1.0 (Reba et al., Chandler, Modelski, Buringh and others): the 4,476 cities that ever reach 100,000, as whole urban agglomerations, interpolated in log space between observations. A city is hidden before its first record and held at its last value (shown dimmer) after the table ends, about 2000. Land is any ground that has people in at least one density snapshot, drawn at 18 km resolution.</p>
+    <p>City populations come from Stadestér 1.0 (Reba et al., Chandler, Modelski, Buringh and others): the 4,476 cities that ever reach 100,000, as whole urban agglomerations, interpolated in log space between observations. A city is hidden before its first record and held at its last value (shown dimmer) after the table ends, about 2000. Coastlines are Natural Earth 50 m land, drawn at 18 km resolution. The Political layer is Cliopatria (Seshat Global History Databank, CC BY 4.0): 1,637 polities, shown as snapshots every 100 years to 1000 CE, then every 50 and every 25 years, at the same 18 km resolution. Colours are arbitrary per polity, borders are approximate, and where polities overlap the smaller one is drawn on top.</p>
     <p>City area is measured from about 1800. Before that it is modelled as population divided by the median city density of 1800 (about 18,000 people per km²), so earlier pillars are estimates; the tooltip says which. Time axis is stretched: 2357 BCE–0, 0–1700 and 1700–2025 get 30%, 30% and 40% of the width. Data: <a href="https://doi.org/10.5281/zenodo.17180328" target="_blank" rel="noopener">Stadestér 1.0 (Zenodo, MIT)</a>.</p>
   </footer>
 </div>
@@ -224,7 +229,7 @@ const DATA = /*__DATA__*/{};
   function mul(a, b) { const o = new Float32Array(16); for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) { let s = 0; for (let k = 0; k < 4; k++) s += a[k * 4 + r] * b[c * 4 + k]; o[c * 4 + r] = s; } return o; }
 
   // ---- state
-  const S = { t: 0, lat: 28, lon: 100, head: 0, tilt: 0, range: 2.9, sel: [], hover: -1, hMul: 1, tMul: 3, shown: [] };
+  const S = { t: 0, lat: 28, lon: 100, head: 0, tilt: 0, range: 2.9, sel: [], hover: -1, hMul: 1, tMul: 3, shown: [], layer: 1 };
   const FOV = 35 * RAD, RANGE_MIN = 0.012, RANGE_MAX = 3.0;
   const stage = $("#stage"), glc = $("#gl"), ov = $("#ov"), octx = ov.getContext("2d"), tip = $("#tip");
   let W = 1, H = 1, dpr = 1;
@@ -243,12 +248,32 @@ const DATA = /*__DATA__*/{};
 in vec3 aPos; uniform mat4 uVP; out vec3 vW;
 void main() { vW = aPos; gl_Position = uVP * vec4(aPos, 1.0); }`, `#version 300 es
 precision highp float;
-in vec3 vW; uniform sampler2D uMask; uniform vec3 uOcean, uLandC, uLight, uEye; out vec4 o;
+in vec3 vW; uniform sampler2D uMask; uniform highp usampler2D uPol; uniform vec3 uOcean, uLandC, uLight, uEye;
+uniform int uLayer; uniform ivec2 uPolSize; uniform vec2 uSL; uniform vec3 uBorder; out vec4 o;
+uint idAt(ivec2 p) { p.x = (p.x % uPolSize.x + uPolSize.x) % uPolSize.x; p.y = clamp(p.y, 0, uPolSize.y - 1); return texelFetch(uPol, p, 0).r; }
+vec3 hsl(float h, float s, float l) {
+  vec3 k = clamp(abs(mod(h * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
+  return l + s * (k - 0.5) * (1.0 - abs(2.0 * l - 1.0));
+}
 void main() {
   vec3 n = normalize(vW);
   vec2 uv = vec2(atan(n.y, n.x) / 6.2831853 + 0.5, 0.5 - asin(clamp(n.z, -1.0, 1.0)) / 3.14159265);
   float m = texture(uMask, uv).r;
-  vec3 base = mix(uOcean, uLandC, smoothstep(0.38, 0.62, m));
+  float land = smoothstep(0.38, 0.62, m);
+  vec3 landC = uLandC;
+  if (uLayer == 1) {
+    vec2 t = uv * vec2(uPolSize); ivec2 p = ivec2(floor(t)); vec2 f = fract(t);
+    uint id = idAt(p);
+    if (id != 0u) landC = mix(uLandC, hsl(fract(float(id) * 0.61803398875), uSL.x, uSL.y), 0.82);
+    float dt = max(length(fwidth(n)) * 343.8, 0.0001), b = 0.0;
+    uint l = idAt(p + ivec2(-1, 0)), r = idAt(p + ivec2(1, 0)), d = idAt(p + ivec2(0, 1)), u = idAt(p + ivec2(0, -1));
+    if (l != id) b = max(b, 1.0 - smoothstep(0.0, dt * 1.1, f.x));
+    if (r != id) b = max(b, 1.0 - smoothstep(0.0, dt * 1.1, 1.0 - f.x));
+    if (d != id) b = max(b, 1.0 - smoothstep(0.0, dt * 1.1, 1.0 - f.y));
+    if (u != id) b = max(b, 1.0 - smoothstep(0.0, dt * 1.1, f.y));
+    landC = mix(landC, uBorder, 0.75 * b * (id != 0u || l != 0u || r != 0u || d != 0u || u != 0u ? 1.0 : 0.0));
+  }
+  vec3 base = mix(uOcean, landC, land);
   float d = max(dot(n, uLight), 0.0);
   vec3 col = base * (0.52 + 0.48 * d);
   float rim = 1.0 - max(dot(n, normalize(uEye - n)), 0.0);
@@ -310,6 +335,38 @@ void main() {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   DATA.land.data = null;
+
+  // political layer: polity-id snapshots, decoded lazily into one integer texture
+  const POL = DATA.political, PW = POL.w, PH = POL.h, PN = PW * PH;
+  const polCache = new Map(), polPending = new Map();
+  async function inflateB64(b64) { return new Uint8Array(await new Response(new Blob([Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))]).stream().pipeThrough(new DecompressionStream("deflate"))).arrayBuffer()); }
+  function loadPol(i) {
+    if (polCache.has(i)) return Promise.resolve(polCache.get(i));
+    if (!polPending.has(i)) polPending.set(i, inflateB64(POL.chunks[i]).then((u8) => {
+      const a = new Uint16Array(PN); for (let k = 0; k < PN; k++) a[k] = (u8[k] << 8) | u8[PN + k];
+      polCache.set(i, a); polPending.delete(i);
+      while (polCache.size > 4) polCache.delete(polCache.keys().next().value);
+      return a;
+    }));
+    return polPending.get(i);
+  }
+  const polIndex = (year) => { let i = 0; while (i < POL.years.length - 1 && POL.years[i + 1] <= year) i++; return i; };
+  const texPol = gl.createTexture(); gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, texPol);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.R16UI, PW, PH, 0, gl.RED_INTEGER, gl.UNSIGNED_SHORT, new Uint16Array(PN));
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.activeTexture(gl.TEXTURE0);
+  let polShown = -1, polArr = null;
+  async function showPolity(year) {
+    const i = polIndex(year);
+    if (i === polShown) return;
+    const a = await loadPol(i);
+    if (polIndex(tToYear(S.t)) !== i) return; // time moved on while decoding
+    gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, texPol);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, PW, PH, gl.RED_INTEGER, gl.UNSIGNED_SHORT, a);
+    gl.activeTexture(gl.TEXTURE0);
+    polShown = i; polArr = a; render();
+    if (i + 1 < POL.years.length) loadPol(i + 1);
+  }
 
   // ---- geometry: graticule (rebuilt when its step changes)
   const vaoGrat = gl.createVertexArray(); gl.bindVertexArray(vaoGrat);
@@ -392,7 +449,8 @@ void main() {
   // ---- render
   let theme = null;
   function readTheme() {
-    theme = { space: hex(css("--space")), ocean: hex(css("--ocean")), land: hex(css("--land")), grat: css("--grat"),
+    const lum = hex(css("--bg")).reduce((a, b) => a + b, 0) / 3;
+    theme = { dark: lum < 0.5, border: lum < 0.5 ? [0.9, 0.95, 0.95] : [0.08, 0.15, 0.17], space: hex(css("--space")), ocean: hex(css("--ocean")), land: hex(css("--land")), grat: css("--grat"),
       ramp: ["--h0", "--h1", "--h2", "--h3", "--h4", "--h5"].map((n) => hex(css(n))), sel: [1, 2, 3, 4, 5].map((i) => hex(css("--c" + i))) };
     const rs = ["--h0", "--h1", "--h2", "--h3", "--h4", "--h5"].map((n, i) => `${css(n)} ${(i / 5) * 100}%`).join(",");
     $("#ramp").style.background = `linear-gradient(90deg, ${rs})`;
@@ -411,6 +469,11 @@ void main() {
     gl.uniform3fv(gl.getUniformLocation(globeP, "uOcean"), theme.ocean); gl.uniform3fv(gl.getUniformLocation(globeP, "uLandC"), theme.land);
     gl.uniform3fv(gl.getUniformLocation(globeP, "uLight"), L); gl.uniform3fv(gl.getUniformLocation(globeP, "uEye"), c.eye);
     gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, texMask); gl.uniform1i(gl.getUniformLocation(globeP, "uMask"), 0);
+    gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, texPol); gl.uniform1i(gl.getUniformLocation(globeP, "uPol"), 1); gl.activeTexture(gl.TEXTURE0);
+    gl.uniform1i(gl.getUniformLocation(globeP, "uLayer"), S.layer === 1 && polShown >= 0 ? 1 : 0);
+    gl.uniform2i(gl.getUniformLocation(globeP, "uPolSize"), PW, PH);
+    gl.uniform2fv(gl.getUniformLocation(globeP, "uSL"), theme.dark ? [0.42, 0.34] : [0.50, 0.70]);
+    gl.uniform3fv(gl.getUniformLocation(globeP, "uBorder"), theme.border);
     gl.bindVertexArray(vaoGlobe); gl.drawElements(gl.TRIANGLES, sphere.idx.length, gl.UNSIGNED_INT, 0);
 
     const step = S.range > 1.5 ? 30 : S.range > 0.7 ? 15 : S.range > 0.35 ? 10 : S.range > 0.15 ? 5 : S.range > 0.07 ? 2 : 1;
@@ -526,7 +589,7 @@ void main() {
   $("#rows").addEventListener("click", (e) => { const b = e.target.closest("[data-rm]"); if (b) select(S.sel.filter((i) => i !== +b.dataset.rm), false); });
 
   // ---- time
-  function setT(t) { S.t = clamp(t, 0, 1); $("#slider").value = Math.round(S.t * 1000); rebuild(); updatePanel(); render(); }
+  function setT(t) { S.t = clamp(t, 0, 1); $("#slider").value = Math.round(S.t * 1000); rebuild(); updatePanel(); render(); if (S.layer === 1) showPolity(tToYear(S.t)); }
   $("#slider").addEventListener("input", (e) => { stop(); setT(e.target.value / 1000); });
   const chart = $("#chart");
   const scrub = (e) => { const r = chart.getBoundingClientRect(); stop(); setT(((e.clientX - r.left) - CH.l) / (chart.clientWidth - CH.l - CH.r)); };
@@ -536,6 +599,11 @@ void main() {
   function stop() { S.playing = false; cancelAnimationFrame(raf); $("#play").textContent = "Play"; }
   function tick(ts) { if (!S.playing) return; const dt = Math.min(0.05, (ts - last) / 1000); last = ts; setT(S.t + dt / 50); if (S.t >= 1) return stop(); raf = requestAnimationFrame(tick); }
   $("#play").addEventListener("click", () => { if (S.playing) return stop(); if (S.t >= 1) S.t = 0; S.playing = true; $("#play").textContent = "Pause"; last = performance.now(); raf = requestAnimationFrame(tick); });
+  $("#layer").addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    S.layer = +b.dataset.l; document.querySelectorAll("#layer button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    if (S.layer === 1) showPolity(tToYear(S.t)); render();
+  });
   $("#hmul").addEventListener("input", (e) => { S.hMul = +e.target.value; $("#hout").textContent = S.hMul.toFixed(1) + "×"; rebuild(); render(); });
   $("#tmul").addEventListener("input", (e) => { S.tMul = +e.target.value; $("#tout").textContent = S.tMul.toFixed(1) + "×"; rebuild(); render(); });
 
@@ -582,8 +650,28 @@ void main() {
       tip.hidden = false;
       tip.innerHTML = `<b>${clean(c.name)}</b> <span>${c.country}</span><span>~${fmtPop(P.pop[i])} people${P.held[i] ? " (last recorded value)" : ""}</span><span>${fmtArea(P.area[i])} km² ${P.modelled[i] ? "(modelled)" : "(measured)"}</span>`;
       tip.style.left = Math.min(W - 220, e.clientX - rect.left + 14) + "px"; tip.style.top = Math.max(4, e.clientY - rect.top - 10) + "px";
-    } else tip.hidden = true;
+    } else {
+      const pol = S.layer === 1 ? polityAt(e.clientX - rect.left, e.clientY - rect.top) : null;
+      if (pol) {
+        tip.hidden = false;
+        tip.innerHTML = `<b>${pol[0]}</b><span>${fmtYear(pol[1])} to ${fmtYear(pol[2])}</span><span>borders as of ${fmtYear(POL.years[polShown])}</span>`;
+        tip.style.left = Math.min(W - 220, e.clientX - rect.left + 14) + "px"; tip.style.top = Math.max(4, e.clientY - rect.top - 10) + "px";
+      } else tip.hidden = true;
+    }
   });
+  // which polity lies under the pointer: ray from the camera onto the unit sphere, then a texel lookup
+  function polityAt(mx, my) {
+    if (!polArr || !C) return null;
+    const th = Math.tan(FOV / 2), nx = (mx / W) * 2 - 1, ny = 1 - (my / H) * 2;
+    const d = norm([0, 1, 2].map((i) => C.fwd[i] + C.right[i] * nx * th * (W / H) + C.up[i] * ny * th));
+    const b = dot(C.eye, d), c = dot(C.eye, C.eye) - 1, disc = b * b - c;
+    if (disc < 0) return null;
+    const t = -b - Math.sqrt(disc), p = [0, 1, 2].map((i) => C.eye[i] + d[i] * t);
+    const lat = Math.asin(clamp(p[2], -1, 1)), lon = Math.atan2(p[1], p[0]);
+    const x = Math.floor((lon / (2 * Math.PI) + 0.5) * PW) % PW, y = clamp(Math.floor((0.5 - lat / Math.PI) * PH), 0, PH - 1);
+    const id = polArr[y * PW + x];
+    return id ? POL.polities[id - 1] : null;
+  }
   const release = (e) => {
     if (downAt && ptrs.size === 1 && e.type === "pointerup" && Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) < 4) {
       const rect = stage.getBoundingClientRect(), hit = pickAt(e.clientX - rect.left, e.clientY - rect.top);

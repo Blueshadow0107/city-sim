@@ -92,7 +92,9 @@ def main() -> None:
 
     land, lw, lh = land_mask()
     bookmarks = [{**b, "cities": [index[k] for k in b["cities"]], "range": 0.35, "tilt": 55} for b in bw.BOOKMARKS]
-    doc = {"land": {"w": lw, "h": lh, "data": land}, "dens": dens, "cities": cities, "bookmarks": bookmarks}
+    political = json.load(open(ROOT / "data/processed/political.json"))  # run build_political.py first
+    doc = {"land": {"w": lw, "h": lh, "data": land}, "dens": dens, "cities": cities, "bookmarks": bookmarks,
+           "political": political}
     OUT.write_text(json.dumps(doc, ensure_ascii=False, separators=(",", ":")))
     print("wrote", OUT, f"{OUT.stat().st_size/1e6:.1f} MB  (land mask {len(land)/1e3:.0f} kB)")
 
