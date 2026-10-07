@@ -66,7 +66,10 @@ h1 { font: 500 22px/1.1 var(--font-display); margin: 0; letter-spacing: -0.01em;
 .rellegend { position: absolute; right: 46px; bottom: 8px; max-width: min(420px, calc(100% - 300px)); display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 3px 10px; padding: 6px 9px; font-size: 11px; background: color-mix(in srgb, var(--panel) 88%, transparent); border: 1px solid var(--rule); border-radius: 6px; pointer-events: none; }
 .rellegend span { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 .rellegend i { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
-.rellegend i.fade { background: repeating-linear-gradient(45deg, var(--muted) 0 2px, transparent 2px 4px); }
+.rellegend i.fade { background: color-mix(in srgb, var(--muted) 35%, transparent); border: 1px solid var(--muted); }
+.rellegend i.stripe { background: repeating-linear-gradient(135deg, #1f63c9 0 2px, #169a55 2px 4px); }
+.chk { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); cursor: pointer; }
+.chk input { accent-color: var(--accent); margin: 0; }
 .rellegend .d { color: var(--muted); }
 #infobody .dot { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; }
 .hint { position: absolute; left: 14px; bottom: 8px; font: 11px var(--font-data); color: var(--muted); pointer-events: none; text-shadow: 0 0 4px var(--halo); }
@@ -140,6 +143,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); height: 24px; ma
       <datalist id="cities"></datalist>
     </div>
     <span class="seg" id="layer" role="group" aria-label="Base layer"><button type="button" data-l="1" aria-pressed="true">Political</button><button type="button" data-l="2" aria-pressed="false">Religion</button><button type="button" data-l="0" aria-pressed="false">Plain</button></span>
+    <label class="chk" id="infwrap" hidden title="Religions carried forward from earlier polities where none is recorded"><input type="checkbox" id="infer" checked> Show inferred</label>
     <button type="button" class="hbtn" id="aboutbtn" aria-expanded="false" aria-controls="about">About</button>
   </header>
 
@@ -202,7 +206,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); height: 24px; ma
     <h2>Data</h2>
     <p>City populations come from Stadestér 1.0 (Reba et al., Chandler, Modelski, Buringh and others): the 4,476 cities that ever reach 100,000, as whole urban agglomerations, interpolated in log space between observations. A city is hidden before its first record and held at its last value (shown dimmer) after the table ends, about 2000. City area is measured from about 1800; before that it is modelled as population divided by the median city density of 1800 (about 18,000 people per km²), so earlier pillars are estimates and the tooltip says which. "People in view" comes from a 55 km population grid, so it is rough in close-ups.</p>
     <p>Coastlines are Natural Earth 50 m land, drawn at 18 km resolution. The Political layer is Cliopatria (Seshat Global History Databank, CC BY 4.0): 1,637 polities, as snapshots every 100 years to 1000 CE, then every 50 and every 25 years, at the same 18 km resolution. A polity keeps its colour, a successor inherits the colour of the polity it overlaps most, and neighbours never share one. Borders are approximate, and where polities overlap the smaller one is drawn on top.</p>
-    <p>The Religion layer colours each polity by the religion family Wikidata records for it (property "religion or worldview", 421 of the 1,637 polities, about 39% of polity-covered land on average). A polity with no record inherits the religion of the earlier polity it overlaps most (it needs at least a quarter of its own area to overlap) and is drawn faded, so with inheritance about 73% of land is coloured. That is an assumption of continuity, not a record: conquests and conversions are not modelled, there is nothing before roughly 1800 BCE, and a polity listed under several religions gets its most common family. Families are my grouping of 108 Wikidata labels.</p>
+    <p>The Religion layer shows the religion, not the polity: neighbouring polities of the same religion merge into one region and borders are drawn only where the religion changes. Each polity is coloured by the religion families Wikidata records for it (property "religion or worldview", 421 of the 1,637 polities, about 39% of polity-covered land on average). A polity that lists several religions, or inherits several, is drawn in diagonal stripes of those colours. A polity with no record inherits the religions of the earlier polities it overlaps (a family needs at least 30% of the polity's area, at most two) and is drawn faded; the "Show inferred" box hides that fill, leaving only recorded religions. With inheritance about 72% of land is coloured. That is an assumption of continuity, not a record: conquests and conversions are not modelled and there is nothing before roughly 1800 BCE. Families are my grouping of 108 Wikidata labels into nine. In the info card, people in a striped polity are split evenly between its religions, and the figures are people first, land second.</p>
     <p>The time axis is stretched: 2357 BCE–0, 0–1700 and 1700–2025 get 30%, 30% and 40% of the width. Data: <a href="https://doi.org/10.5281/zenodo.17180328" target="_blank" rel="noopener">Stadestér 1.0 (Zenodo, MIT)</a>.</p>
   </div>
 </div>
@@ -263,7 +267,7 @@ const DATA = /*__DATA__*/{};
   function mul(a, b) { const o = new Float32Array(16); for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) { let s = 0; for (let k = 0; k < 4; k++) s += a[k * 4 + r] * b[c * 4 + k]; o[c * 4 + r] = s; } return o; }
 
   // ---- state
-  const S = { t: 0, lat: 28, lon: 100, head: 0, tilt: 0, range: 2.9, sel: [], hover: -1, hMul: 1, tMul: 3, shown: [], layer: 1 };
+  const S = { t: 0, lat: 28, lon: 100, head: 0, tilt: 0, range: 2.9, sel: [], hover: -1, hMul: 1, tMul: 3, shown: [], layer: 1, hoverMask: 0, showInf: true };
   const FOV = 35 * RAD, RANGE_MIN = 0.012, RANGE_MAX = 3.0;
   const stage = $("#stage"), glc = $("#gl"), ov = $("#ov"), octx = ov.getContext("2d"), tip = $("#tip");
   let W = 1, H = 1, dpr = 1;
@@ -283,7 +287,27 @@ in vec3 aPos; uniform mat4 uVP; out vec3 vW;
 void main() { vW = aPos; gl_Position = uVP * vec4(aPos, 1.0); }`, `#version 300 es
 precision highp float;
 in vec3 vW; uniform sampler2D uMask; uniform highp usampler2D uPol; uniform vec3 uOcean, uLandC, uLight, uEye;
-uniform int uLayer; uniform ivec2 uPolSize; uniform vec3 uBorder; uniform sampler2D uPalTex, uRelTex; uniform vec3 uPalC[16], uRelC[12]; out vec4 o;
+uniform int uLayer; uniform ivec2 uPolSize; uniform vec3 uBorder; uniform sampler2D uPalTex, uRelTex; uniform vec3 uPalC[16], uRelC[12]; uniform int uHover, uShowInf; uniform float uTexPx; out vec4 o;
+// Religion of a polity: a 9-bit mask of families (bit f-1 = family f), -1 = no polity. Inferred sets count as unknown (0)
+// when they are switched off. Two bytes per polity: x = bits 0-7, y bit 0 = bit 8, y bit 7 = inferred.
+ivec2 relRaw(uint id) { return ivec2(texelFetch(uRelTex, ivec2(int(id), 0), 0).rg * 255.0 + 0.5); }
+bool relInf(uint id) { return (relRaw(id).y & 128) != 0 && uShowInf == 1; }
+int relMask(uint id) {
+  if (id == 0u) return -1;
+  ivec2 v = relRaw(id);
+  if ((v.y & 128) != 0 && uShowInf == 0) return 0;
+  return v.x + ((v.y & 1) << 8);
+}
+int bitCount9(int m) { int n = 0; for (int i = 0; i < 9; i++) n += (m >> i) & 1; return n; }
+// one family colour, or diagonal stripes cycling through the families when the polity has several
+vec3 relColour(int m, float phase) {
+  int n = 0;
+  for (int i = 0; i < 9; i++) n += (m >> i) & 1;
+  if (n == 0) return mix(uLandC, vec3(0.5), 0.22);
+  int k = n == 1 ? 0 : int(floor(fract(phase) * float(n)));
+  for (int i = 0; i < 9; i++) { if (((m >> i) & 1) == 1) { if (k == 0) return uRelC[i + 1]; k--; } }
+  return uLandC;
+}
 uint idAt(ivec2 p) { p.x = (p.x % uPolSize.x + uPolSize.x) % uPolSize.x; p.y = clamp(p.y, 0, uPolSize.y - 1); return texelFetch(uPol, p, 0).r; }
 void main() {
   vec3 n = normalize(vW);
@@ -295,19 +319,21 @@ void main() {
     vec2 t = uv * vec2(uPolSize); ivec2 p = ivec2(floor(t)); vec2 f = fract(t);
     uint id = idAt(p);
     if (id != 0u && uLayer == 1) landC = mix(uLandC, uPalC[int(texelFetch(uPalTex, ivec2(int(id), 0), 0).r * 255.0 + 0.5)], 0.85);
+    float dt = max(length(fwidth(n)) * 343.8, 0.0001), b = 0.0; // texels per screen pixel
     if (id != 0u && uLayer == 2) {
-      int rv = int(texelFetch(uRelTex, ivec2(int(id), 0), 0).r * 255.0 + 0.5);
-      bool inferred = rv >= 128; int fam = inferred ? rv - 128 : rv;
-      vec3 rc = fam == 0 ? mix(uLandC, vec3(0.5), 0.22) : uRelC[fam];
-      if (inferred) rc = mix(rc, uLandC, 0.5);
-      landC = mix(uLandC, rc, 0.9);
+      int m = relMask(id);
+      vec3 rc = relColour(m, (t.x + t.y) / (uTexPx * 9.0 * float(max(bitCount9(m), 1)))); // every stripe stays about 9 px wide at any zoom
+      if (relInf(id)) rc = mix(rc, uLandC, 0.38);
+      if (uHover != 0 && (m & uHover) == 0) rc = mix(rc, uLandC, 0.75);
+      landC = mix(uLandC, rc, 0.94);
     }
-    float dt = max(length(fwidth(n)) * 343.8, 0.0001), b = 0.0;
     uint l = idAt(p + ivec2(-1, 0)), r = idAt(p + ivec2(1, 0)), d = idAt(p + ivec2(0, 1)), u = idAt(p + ivec2(0, -1));
-    if (l != id) b = max(b, 1.0 - smoothstep(0.0, dt * 1.1, f.x));
-    if (r != id) b = max(b, 1.0 - smoothstep(0.0, dt * 1.1, 1.0 - f.x));
-    if (d != id) b = max(b, 1.0 - smoothstep(0.0, dt * 1.1, 1.0 - f.y));
-    if (u != id) b = max(b, 1.0 - smoothstep(0.0, dt * 1.1, f.y));
+    bool bl = l != id, br = r != id, bd = d != id, bu = u != id;
+    if (uLayer == 2) { int f0 = relMask(id); bl = relMask(l) != f0; br = relMask(r) != f0; bd = relMask(d) != f0; bu = relMask(u) != f0; } // religion borders only
+    if (bl) b = max(b, 1.0 - smoothstep(0.0, dt * 1.1, f.x));
+    if (br) b = max(b, 1.0 - smoothstep(0.0, dt * 1.1, 1.0 - f.x));
+    if (bd) b = max(b, 1.0 - smoothstep(0.0, dt * 1.1, 1.0 - f.y));
+    if (bu) b = max(b, 1.0 - smoothstep(0.0, dt * 1.1, f.y));
     landC = mix(landC, uBorder, 0.75 * b * (id != 0u || l != 0u || r != 0u || d != 0u || u != 0u ? 1.0 : 0.0));
   }
   vec3 base = mix(uOcean, landC, land);
@@ -382,7 +408,7 @@ void main() {
     if (!polPending.has(i)) polPending.set(i, Promise.all([inflateB64(POL.chunks[i]), inflateB64(POL.pals[i]), inflateB64(POL.rels[i])]).then(([u8, pal, rel]) => {
       const a = new Uint16Array(PN); for (let k = 0; k < PN; k++) a[k] = (u8[k] << 8) | u8[PN + k];
       const padded = new Uint8Array(2048); padded.set(pal);
-      const relPadded = new Uint8Array(2048); relPadded.set(rel);
+      const relPadded = new Uint8Array(4096); relPadded.set(rel);
       const entry = { a, pal: padded, rel: relPadded };
       polCache.set(i, entry); polPending.delete(i);
       while (polCache.size > 4) polCache.delete(polCache.keys().next().value);
@@ -398,7 +424,7 @@ void main() {
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, 2048, 1, 0, gl.RED, gl.UNSIGNED_BYTE, new Uint8Array(2048));
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
   const texRel = gl.createTexture(); gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, texRel);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, 2048, 1, 0, gl.RED, gl.UNSIGNED_BYTE, new Uint8Array(2048));
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RG8, 2048, 1, 0, gl.RG, gl.UNSIGNED_BYTE, new Uint8Array(4096)); // two bytes per polity
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
   gl.activeTexture(gl.TEXTURE0);
   let polShown = -1, polArr = null, relCur = null;
@@ -412,7 +438,7 @@ void main() {
     gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, texPal);
     gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 2048, 1, gl.RED, gl.UNSIGNED_BYTE, pal);
     gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, texRel);
-    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 2048, 1, gl.RED, gl.UNSIGNED_BYTE, rel);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 2048, 1, gl.RG, gl.UNSIGNED_BYTE, rel);
     gl.activeTexture(gl.TEXTURE0);
     polShown = i; polArr = a; relCur = rel; render();
     if (i + 1 < POL.years.length) loadPol(i + 1);
@@ -500,7 +526,8 @@ void main() {
   let theme = null, relHexNow = [];
   const FAM = POL.families;
   function buildRelLegend() {
-    $("#rellegend").innerHTML = FAM.map((n, i) => i ? `<span><i style="background:${relHexNow[i]}"></i>${n}</span>` : "").join("") + `<span class="d"><i class="fade"></i>faded = inferred</span>`;
+    $("#rellegend").innerHTML = FAM.map((n, i) => i ? `<span><i style="background:${relHexNow[i]}"></i>${n}</span>` : "").join("")
+      + `<span class="d"><i class="fade"></i>faded = inferred</span><span class="d"><i class="stripe"></i>stripes = several religions</span>`;
   }
   function readTheme() {
     const lum = hex(css("--bg")).reduce((a, b) => a + b, 0) / 3;
@@ -508,10 +535,12 @@ void main() {
     const hslRgb = (h, s, l) => { const k = (n) => (n + h * 12) % 12, a = s * Math.min(l, 1 - l), f = (n) => l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1)); return [f(0), f(8), f(4)]; };
     const dk = lum < 0.5, palC = new Float32Array(48);
     for (let i = 0; i < 16; i++) palC.set(hslRgb((i * 0.381966) % 1, dk ? 0.42 : 0.5, (dk ? 0.36 : 0.68) + [-0.05, 0, 0.05][i % 3]), i * 3);
+    // unknown, Christianity (blue), Islam (green), Hinduism (red), Buddhism (yellow), Judaism (cyan), East Asian (magenta),
+    // Zoroastrianism (purple), ancient & indigenous (brown), other (slate): hues spread as far apart as ten categories allow
     const relHex = dk
-      ? ["#7a8a8a", "#5b8fe0", "#46b479", "#f07a3a", "#f0c84a", "#8cc8ea", "#e0607f", "#a478cc", "#e0a070", "#a08a68", "#6a7878", "#8a8a8a"]
-      : ["#9a9a9a", "#4a78c2", "#3a9a63", "#e2672a", "#e0b83a", "#7fb7d9", "#c24b6a", "#8a5fb0", "#cc8f5e", "#8b7355", "#b8c0c0", "#7a7a7a"];
-    const relC = new Float32Array(36); relHex.forEach((h, i) => relC.set(hex(h), i * 3));
+      ? ["#6d7c7c", "#4d8ff2", "#2fc47a", "#ff5b3d", "#ffd23f", "#2fd5e6", "#f063b8", "#a97cf0", "#b58d5c", "#8f9fa8"]
+      : ["#9a9a9a", "#1f63c9", "#169a55", "#e03a22", "#f2b81c", "#12b0c4", "#d1409a", "#7646c4", "#85603a", "#66767f"];
+    const relC = new Float32Array(36); relHex.forEach((h, i) => relC.set(hex(h), i * 3)); // shader array holds 12
     relHexNow = relHex;
     theme = { dark: lum < 0.5, palC, relC, border: lum < 0.5 ? [0.9, 0.95, 0.95] : [0.08, 0.15, 0.17], space: hex(css("--space")), ocean: hex(css("--ocean")), land: hex(css("--land")), grat: css("--grat"),
       ramp: ["--h0", "--h1", "--h2", "--h3", "--h4", "--h5"].map((n) => hex(css(n))), sel: [1, 2, 3, 4, 5].map((i) => hex(css("--c" + i))) };
@@ -537,6 +566,8 @@ void main() {
     gl.uniform1i(gl.getUniformLocation(globeP, "uLayer"), S.layer >= 1 && polShown >= 0 ? S.layer : 0);
     gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, texRel); gl.uniform1i(gl.getUniformLocation(globeP, "uRelTex"), 3); gl.activeTexture(gl.TEXTURE0);
     gl.uniform3fv(gl.getUniformLocation(globeP, "uRelC"), theme.relC);
+    gl.uniform1i(gl.getUniformLocation(globeP, "uHover"), S.layer === 2 ? S.hoverMask : 0); gl.uniform1i(gl.getUniformLocation(globeP, "uShowInf"), S.showInf ? 1 : 0);
+    gl.uniform1f(gl.getUniformLocation(globeP, "uTexPx"), 2 * Math.tan(FOV / 2) * S.range / glc.height * 343.8);
     gl.uniform2i(gl.getUniformLocation(globeP, "uPolSize"), PW, PH);
     gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, texPal); gl.uniform1i(gl.getUniformLocation(globeP, "uPalTex"), 2); gl.activeTexture(gl.TEXTURE0);
     gl.uniform3fv(gl.getUniformLocation(globeP, "uPalC"), theme.palC);
@@ -641,7 +672,9 @@ void main() {
     const A = gridCache.get(i), B = gridCache.get(i + 1), f = clamp((year - GF[i]) / (GF[i + 1] - GF[i]), 0, 1), k0 = GL / 255 * (1 - f), k1 = GL / 255 * f;
     const m = C.VP, ex = C.eye, polOn = polArr && S.layer >= 1;
     const key = i + ":" + f.toFixed(3);
-    let pop = 0, area = 0, landArea = 0; const polA = new Map(), doWorld = key !== worldKey; let world = 0;
+    let pop = 0, area = 0, landArea = 0, infPop = 0; const polA = new Map(), doWorld = key !== worldKey; let world = 0;
+    const famPop = new Array(FAM.length + 1).fill(0); // people by religion family; last slot = no polity
+    const byReligion = polOn && S.layer === 2 && relCur;
     for (let k = 0; k < GN; k++) {
       const v = A[k] * k0 + B[k] * k1, p = v < 0.3 ? 0 : Math.pow(10, v) - 1;
       if (doWorld) world += p;
@@ -651,6 +684,11 @@ void main() {
       if (cw <= 0 || cx > cw || cx < -cw || cy > cw || cy < -cw) continue;
       const a = garea[(k / GW) | 0];
       pop += p; area += a;
+      if (byReligion) { // people are split evenly between the religions a polity lists
+        const id = polArr[polIdx[k]];
+        if (!id) famPop[FAM.length] += p;
+        else { const fs = famsOf(relMaskJs(id)); if (!fs.length) famPop[0] += p; else for (const f of fs) famPop[f] += p / fs.length; if (fs.length && relInfJs(id)) infPop += p; }
+      }
       if (isLand[k]) { landArea += a; if (polOn) { const id = polArr[polIdx[k]]; polA.set(id, (polA.get(id) || 0) + a); } }
     }
     if (doWorld) { worldTotal = world; worldKey = key; }
@@ -665,13 +703,14 @@ void main() {
       const list = [...polA.entries()].sort((a, b) => b[1] - a[1]), tot = landArea || 1;
       const named = list.filter(([id]) => id > 0), none = polA.get(0) || 0;
       h += `<div class="k">Polities <span class="d">(${named.length} in view)</span></div><ol class="top">${named.slice(0, S.layer === 2 ? 2 : 4).map(([id, a]) => `<li><span>${esc(POL.polities[id - 1][0])}</span><b>${Math.round(100 * a / tot)}%</b></li>`).join("")}${none / tot > 0.05 ? `<li class="d"><span>no polity recorded</span><b>${Math.round(100 * none / tot)}%</b></li>` : ""}</ol>`;
-      if (S.layer === 2 && relCur) { // religions by share of the land in view
-        const fam = new Array(FAM.length).fill(0); let inferred = 0;
-        for (const [id, a] of polA) { if (!id) continue; const rv = relCur[id], f = rv & 127; fam[f] += a; if (rv >= 128) inferred += a; }
-        const known = tot - fam[0] - none;
-        const rows = fam.map((a, f) => [f, a]).filter(([f, a]) => f > 0 && a / tot > 0.01).sort((x, y) => y[1] - x[1]);
-        h += `<div class="k">Religions <span class="d">(share of land in view)</span></div><ol class="top">${rows.slice(0, 5).map(([f, a]) => `<li><span><i class="dot" style="background:${relHexNow[f]}"></i>${FAM[f]}</span><b>${Math.round(100 * a / tot)}%</b></li>`).join("") || `<li class="d"><span>none recorded here</span><b></b></li>`}${(fam[0] + none) / tot > 0.05 ? `<li class="d"><span>unknown or no polity</span><b>${Math.round(100 * (fam[0] + none) / tot)}%</b></li>` : ""}</ol>`;
-        if (inferred > 0) h += `<div class="d small">${Math.round(100 * inferred / Math.max(known, 1))}% of the known share is inferred from earlier polities, not recorded.</div>`;
+      if (byReligion) { // religions in view, counted by people and by land
+        const fam = new Array(FAM.length).fill(0);
+        for (const [id, a] of polA) { if (!id) continue; const fs = famsOf(relMaskJs(id)); if (!fs.length) fam[0] += a; else for (const f of fs) fam[f] += a / fs.length; }
+        const pct = (x) => Math.round(100 * x) + "%", P0 = Math.max(pop, 1);
+        const rows = fam.map((a, f) => [f, a, famPop[f]]).filter(([f, a, pp]) => f > 0 && (pp / P0 > 0.01 || a / tot > 0.01)).sort((x, y) => y[2] - x[2]);
+        const unkPeople = famPop[0] + famPop[FAM.length], unkLand = fam[0] + none;
+        h += `<div class="k">Religions <span class="d">(people · land)</span></div><ol class="top">${rows.slice(0, 6).map(([f, a, pp]) => `<li><span><i class="dot" style="background:${relHexNow[f]}"></i>${FAM[f]}</span><b>${pct(pp / P0)} <span class="d">· ${pct(a / tot)}</span></b></li>`).join("") || `<li class="d"><span>none recorded here</span><b></b></li>`}${unkPeople / P0 > 0.05 || unkLand / tot > 0.05 ? `<li class="d"><span>unknown or no polity</span><b>${pct(unkPeople / P0)} · ${pct(unkLand / tot)}</b></li>` : ""}</ol>`;
+        if (infPop > 0) h += `<div class="d small">${pct(infPop / Math.max(P0 - unkPeople, 1))} of the people with a religion shown are counted from inferred, not recorded, religions.</div>`;
       }
     } else if (S.layer === 0) h += `<div class="d small">Switch to Political or Religion to see who holds the land.</div>`;
     h += `<div class="d small">People come from a 55 km grid, so numbers are rough in close-ups.</div>`;
@@ -742,9 +781,10 @@ void main() {
   $("#layer").addEventListener("click", (e) => {
     const b = e.target.closest("button"); if (!b) return;
     S.layer = +b.dataset.l; document.querySelectorAll("#layer button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
-    $("#rellegend").hidden = S.layer !== 2;
+    $("#rellegend").hidden = S.layer !== 2; $("#infwrap").hidden = S.layer !== 2;
     if (S.layer >= 1) showPolity(tToYear(S.t)); render(); scheduleInfo();
   });
+  $("#infer").addEventListener("change", (e) => { S.showInf = e.target.checked; S.hoverMask = 0; render(); scheduleInfo(); });
   $("#hmul").addEventListener("input", (e) => { S.hMul = +e.target.value; $("#hout").textContent = S.hMul.toFixed(1) + "×"; rebuild(); render(); });
   $("#tmul").addEventListener("input", (e) => { S.tMul = +e.target.value; $("#tout").textContent = S.tMul.toFixed(1) + "×"; rebuild(); render(); });
 
@@ -787,24 +827,32 @@ void main() {
     const hit = pickAt(e.clientX - rect.left, e.clientY - rect.top), id = hit ? hit.i : -1;
     if (id !== S.hover) { S.hover = id; rebuild(); render(); }
     if (hit) {
+      if (S.hoverMask) { S.hoverMask = 0; render(); }
       const i = hit.i, c = CITIES[i];
       tip.hidden = false;
       tip.innerHTML = `<b>${clean(c.name)}</b> <span>${c.country}</span><span>~${fmtPop(P.pop[i])} people${P.held[i] ? " (last recorded value)" : ""}</span><span>${fmtArea(P.area[i])} km² ${P.modelled[i] ? "(modelled)" : "(measured)"}</span>`;
       tip.style.left = Math.min(W - 220, e.clientX - rect.left + 14) + "px"; tip.style.top = Math.max(4, e.clientY - rect.top - 10) + "px";
     } else {
       const pol = S.layer >= 1 ? polityAt(e.clientX - rect.left, e.clientY - rect.top) : null;
+      let hf = 0;
       if (pol) {
         tip.hidden = false;
-        let extra = "";
-        if (S.layer === 2 && relCur) {
-          const rv = relCur[pol[5]], fam = rv & 127, inf = rv >= 128;
-          extra = `<span>${fam ? FAM[fam] + (inf ? " (inferred from earlier polities)" : pol[4] ? " · " + esc(pol[4]) : "") : "no religion recorded"}</span>`;
-        }
-        tip.innerHTML = `<b>${esc(pol[0])}</b><span>${fmtYear(pol[1])} to ${fmtYear(pol[2])}</span>${extra}<span>borders as of ${fmtYear(POL.years[polShown])}</span>`;
+        if (S.layer === 2 && relCur) { // religion first, the polity is only context
+          const m = relMaskJs(pol[5]), fs = famsOf(m), inf = relInfJs(pol[5]);
+          hf = m;
+          const how = fs.length ? (inf ? "inferred from earlier polities" : pol[4] ? "recorded: " + esc(pol[4]) : "recorded") : "";
+          tip.innerHTML = `<b>${fs.length ? fs.map((f) => FAM[f]).join(" + ") : "No religion recorded"}</b>${fs.length > 1 ? `<span>more than one religion (striped)</span>` : ""}${how ? `<span>${how}</span>` : ""}<span>${esc(pol[0])} · ${fmtYear(pol[1])} to ${fmtYear(pol[2])}</span><span>as of ${fmtYear(POL.years[polShown])}</span>`;
+        } else tip.innerHTML = `<b>${esc(pol[0])}</b><span>${fmtYear(pol[1])} to ${fmtYear(pol[2])}</span><span>borders as of ${fmtYear(POL.years[polShown])}</span>`;
         tip.style.left = Math.min(W - 220, e.clientX - rect.left + 14) + "px"; tip.style.top = Math.max(4, e.clientY - rect.top - 10) + "px";
       } else tip.hidden = true;
+      if (hf !== S.hoverMask) { S.hoverMask = hf; render(); }
     }
   });
+  // religion set of a polity in the current snapshot: a 9-bit mask (bit f-1 = family f); inferred sets count as unknown
+  // (0) when the switch is off. Two bytes per polity, same layout the shader reads.
+  const relMaskJs = (id) => { const lo = relCur[2 * id], hi = relCur[2 * id + 1]; return (hi & 128) && !S.showInf ? 0 : lo | ((hi & 1) << 8); };
+  const relInfJs = (id) => (relCur[2 * id + 1] & 128) !== 0;
+  const famsOf = (m) => { const out = []; for (let f = 1; f <= 9; f++) if (m >> (f - 1) & 1) out.push(f); return out; };
   // which polity lies under the pointer: ray from the camera onto the unit sphere, then a texel lookup
   function polityAt(mx, my) {
     if (!polArr || !C) return null;
@@ -826,7 +874,7 @@ void main() {
     ptrs.delete(e.pointerId); pinch = 0; downAt = null; if (!ptrs.size) stage.classList.remove("drag");
   };
   stage.addEventListener("pointerup", release); stage.addEventListener("pointercancel", release);
-  stage.addEventListener("pointerleave", () => { tip.hidden = true; if (S.hover !== -1) { S.hover = -1; rebuild(); render(); } });
+  stage.addEventListener("pointerleave", () => { tip.hidden = true; if (S.hoverMask) { S.hoverMask = 0; render(); } if (S.hover !== -1) { S.hover = -1; rebuild(); render(); } });
   stage.addEventListener("wheel", (e) => { e.preventDefault(); cancelAnimationFrame(anim); S.range = clamp(S.range * Math.exp(e.deltaY * 0.0016), RANGE_MIN, RANGE_MAX); render(); }, { passive: false });
   const zbtn = (k) => () => { cancelAnimationFrame(anim); S.range = clamp(S.range * k, RANGE_MIN, RANGE_MAX); render(); };
   $("#zin").addEventListener("click", zbtn(1 / 1.6)); $("#zout").addEventListener("click", zbtn(1.6));
@@ -891,11 +939,11 @@ void main() {
 
   // deep link: #<w or jump 0-3>_<year>[_<tilt>]  (for checking a state)
   readTheme(); resize();
-  const hm = /^#(\d|w)_(-?\d+)(?:_(\d+))?(?:_(r|x))?$/.exec(location.hash); // ..._r opens the Religion layer, ..._x the Plain one
+  const hm = /^#(\d|w)_(-?\d+)(?:_(\d+))?(?:_(r|n|x))?$/.exec(location.hash); // ..._r Religion layer, ..._n Religion without inferred, ..._x Plain
   if (hm && hm[4]) {
-    S.layer = hm[4] === "r" ? 2 : 0;
+    S.layer = hm[4] === "x" ? 0 : 2; if (hm[4] === "n") { S.showInf = false; $("#infer").checked = false; }
     document.querySelectorAll("#layer button").forEach((x) => x.setAttribute("aria-pressed", String(+x.dataset.l === S.layer)));
-    $("#rellegend").hidden = S.layer !== 2;
+    $("#rellegend").hidden = S.layer !== 2; $("#infwrap").hidden = S.layer !== 2;
   }
   if (hm) {
     S.t = yearToT(+hm[2]);

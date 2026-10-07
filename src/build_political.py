@@ -25,9 +25,9 @@ NCOL = 16
 
 # Religion families (index 0 = unknown). The page uses the same order.
 FAMILIES = ["Unknown", "Christianity", "Islam", "Hinduism", "Buddhism", "Judaism", "East Asian", "Zoroastrianism",
-            "Jainism & Sikhism", "Ancient & indigenous", "Secular", "Other"]
+            "Ancient & indigenous", "Other"]
 RULES = [  # (family index, substrings of the lower-cased Wikidata label); first matching rule wins
-    (10, ["agnostic", "secular", "irreligion", "atheism"]),
+    (9, ["agnostic", "secular", "irreligion", "atheism", "jain", "sikh"]),
     (6, ["shinbutsu", "taoism", "confuci", "chinese folk", "shinto", "heaven worship", "ryukyuan", "caodai", "hòa hảo", "ancestor"]),
     (4, ["buddh", "theravāda", "mahāyāna"]),
     (3, ["hindu", "shaiv", "vedic"]),
@@ -36,8 +36,7 @@ RULES = [  # (family index, substrings of the lower-cased Wikidata label); first
          "apostolic", "coptic", "church", "old believers", "gereformeerde", "latin church"]),
     (5, ["judaism", "israelite"]),
     (7, ["zoroast"]),
-    (8, ["jain", "sikh"]),
-    (9, ["pagan", "tengri", "shaman", "animis", "african religion", "yoruba", "greek religion", "roman religion", "gallo-roman",
+    (8, ["pagan", "tengri", "shaman", "animis", "african religion", "yoruba", "greek religion", "roman religion", "gallo-roman",
          "ancient egypt", "babylonian", "sumerian", "hittite", "etruscan", "illyrian", "thracian", "scythian", "baltic", "mythology",
          "aztec", "inca", "longhouse", "polytheism", "bon", "kirat", "kejawen", "arabian", "germanic"]),
 ]
@@ -48,7 +47,7 @@ def family_of(label: str) -> int:
     for fam, keys in RULES:
         if any(k in low for k in keys):
             return fam
-    return 11
+    return 9
 
 
 def known_religions(feats) -> dict[str, tuple[int, str]]:
@@ -68,9 +67,29 @@ def known_religions(feats) -> dict[str, tuple[int, str]]:
     return out
 
 
+def known_religions(feats) -> dict[str, tuple[int, str]]:
+    """polity name -> (family bitmask, label text) from Wikidata P140. Bit (f-1) is set for every family f the polity lists;
+    the uninformative 'Other' bucket is dropped when a real religion is also listed."""
+    rel = json.load(open(ROOT / "data/raw/wikidata/religion.json"))
+    q_of = {f["properties"]["Name"]: f["properties"]["Wikidata"] for f in feats if f["properties"].get("Wikidata")}
+    out: dict[str, tuple[int, str]] = {}
+    for name, q in q_of.items():
+        labels = rel.get(q)
+        if not labels:
+            continue
+        fams = {family_of(lab) for lab in labels}
+        if len(fams) > 1:
+            fams.discard(9)
+        out[name] = (sum(1 << (f - 1) for f in fams), ", ".join(labels[:3]))
+    return out
+
+
+INFERRED = 0x8000  # flag bit in the uint16 stored per polity; the low 9 bits are the family mask
+
+
 def assign_religion(a: np.ndarray, prev: np.ndarray | None, prev_rel: dict[int, int], known: dict[int, int], K: int) -> dict[int, int]:
-    """Byte per polity: family | 128 if inferred. Known polities keep their recorded family; others inherit from the
-    earlier polity they overlap most (needs >= 25% of their own area), otherwise stay unknown (0)."""
+    """uint16 per polity: family bitmask, plus INFERRED when it was not recorded. Known polities keep their recorded set;
+    others inherit every family that at least 30% of their own area overlaps in earlier polities (at most two)."""
     cnt = np.bincount(a.ravel(), minlength=K + 1)
     present = [i for i in range(1, K + 1) if cnt[i] > 0]
     overlaps: dict[int, list[tuple[int, int]]] = {}
@@ -79,8 +98,6 @@ def assign_religion(a: np.ndarray, prev: np.ndarray | None, prev_rel: dict[int, 
         codes, counts = np.unique(a[both].astype(np.int64) * 65536 + prev[both], return_counts=True)
         for code, n in zip(codes, counts):
             overlaps.setdefault(int(code >> 16), []).append((int(n), int(code & 65535)))
-        for v in overlaps.values():
-            v.sort(reverse=True)
     out: dict[int, int] = {}
     for i in present:
         if i in known:
@@ -88,13 +105,13 @@ def assign_religion(a: np.ndarray, prev: np.ndarray | None, prev_rel: dict[int, 
             continue
         votes: dict[int, int] = {}
         for n, pid in overlaps.get(i, []):
-            fam = prev_rel.get(pid, 0) & 127
-            if fam:
-                votes[fam] = votes.get(fam, 0) + n
-        if votes:
-            fam = max(votes, key=lambda k: votes[k])
-            if votes[fam] >= 0.25 * cnt[i]:
-                out[i] = fam | 128
+            m = prev_rel.get(pid, 0) & 0x1FF
+            for f in range(9):
+                if m >> f & 1:
+                    votes[f] = votes.get(f, 0) + n
+        top = sorted((f for f in votes if votes[f] >= 0.30 * cnt[i]), key=lambda f: -votes[f])[:2]
+        if top:
+            out[i] = sum(1 << f for f in top) | INFERRED
     return out
 
 
@@ -204,14 +221,14 @@ def main() -> None:
             pal[i] = c
         pals.append(base64.b64encode(zlib.compress(pal.tobytes(), 9)).decode())
         rel = assign_religion(a, prev_ids, prev_rel, known, K)
-        rel_arr = np.zeros(K + 1, dtype=np.uint8)
+        rel_arr = np.zeros(K + 1, dtype=np.uint16)
         for i, v in rel.items():
             rel_arr[i] = v
         rels.append(base64.b64encode(zlib.compress(rel_arr.tobytes(), 9)).decode())
         wts = np.cos((90 - (np.arange(H) + 0.5) * 180 / H) * np.pi / 180)[:, None] * np.ones((1, W))
         land = a != 0
-        cov_known.append((wts * (land & (rel_arr[a] != 0) & (rel_arr[a] < 128))).sum() / max((wts * land).sum(), 1e-9))
-        cov_all.append((wts * (land & (rel_arr[a] != 0))).sum() / max((wts * land).sum(), 1e-9))
+        cov_known.append((wts * (land & ((rel_arr[a] & 0x1FF) != 0) & ((rel_arr[a] & INFERRED) == 0))).sum() / max((wts * land).sum(), 1e-9))
+        cov_all.append((wts * (land & ((rel_arr[a] & 0x1FF) != 0))).sum() / max((wts * land).sum(), 1e-9))
         prev_rel = rel
         prev_ids, prev_col = a, col
         memory.update(col)
