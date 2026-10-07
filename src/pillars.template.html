@@ -249,12 +249,8 @@ in vec3 aPos; uniform mat4 uVP; out vec3 vW;
 void main() { vW = aPos; gl_Position = uVP * vec4(aPos, 1.0); }`, `#version 300 es
 precision highp float;
 in vec3 vW; uniform sampler2D uMask; uniform highp usampler2D uPol; uniform vec3 uOcean, uLandC, uLight, uEye;
-uniform int uLayer; uniform ivec2 uPolSize; uniform vec2 uSL; uniform vec3 uBorder; out vec4 o;
+uniform int uLayer; uniform ivec2 uPolSize; uniform vec3 uBorder; uniform sampler2D uPalTex; uniform vec3 uPalC[16]; out vec4 o;
 uint idAt(ivec2 p) { p.x = (p.x % uPolSize.x + uPolSize.x) % uPolSize.x; p.y = clamp(p.y, 0, uPolSize.y - 1); return texelFetch(uPol, p, 0).r; }
-vec3 hsl(float h, float s, float l) {
-  vec3 k = clamp(abs(mod(h * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
-  return l + s * (k - 0.5) * (1.0 - abs(2.0 * l - 1.0));
-}
 void main() {
   vec3 n = normalize(vW);
   vec2 uv = vec2(atan(n.y, n.x) / 6.2831853 + 0.5, 0.5 - asin(clamp(n.z, -1.0, 1.0)) / 3.14159265);
@@ -264,7 +260,7 @@ void main() {
   if (uLayer == 1) {
     vec2 t = uv * vec2(uPolSize); ivec2 p = ivec2(floor(t)); vec2 f = fract(t);
     uint id = idAt(p);
-    if (id != 0u) landC = mix(uLandC, hsl(fract(float(id) * 0.61803398875), uSL.x, uSL.y), 0.82);
+    if (id != 0u) landC = mix(uLandC, uPalC[int(texelFetch(uPalTex, ivec2(int(id), 0), 0).r * 255.0 + 0.5)], 0.85);
     float dt = max(length(fwidth(n)) * 343.8, 0.0001), b = 0.0;
     uint l = idAt(p + ivec2(-1, 0)), r = idAt(p + ivec2(1, 0)), d = idAt(p + ivec2(0, 1)), u = idAt(p + ivec2(0, -1));
     if (l != id) b = max(b, 1.0 - smoothstep(0.0, dt * 1.1, f.x));
@@ -342,11 +338,13 @@ void main() {
   async function inflateB64(b64) { return new Uint8Array(await new Response(new Blob([Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))]).stream().pipeThrough(new DecompressionStream("deflate"))).arrayBuffer()); }
   function loadPol(i) {
     if (polCache.has(i)) return Promise.resolve(polCache.get(i));
-    if (!polPending.has(i)) polPending.set(i, inflateB64(POL.chunks[i]).then((u8) => {
+    if (!polPending.has(i)) polPending.set(i, Promise.all([inflateB64(POL.chunks[i]), inflateB64(POL.pals[i])]).then(([u8, pal]) => {
       const a = new Uint16Array(PN); for (let k = 0; k < PN; k++) a[k] = (u8[k] << 8) | u8[PN + k];
-      polCache.set(i, a); polPending.delete(i);
+      const padded = new Uint8Array(2048); padded.set(pal);
+      const entry = { a, pal: padded };
+      polCache.set(i, entry); polPending.delete(i);
       while (polCache.size > 4) polCache.delete(polCache.keys().next().value);
-      return a;
+      return entry;
     }));
     return polPending.get(i);
   }
@@ -354,15 +352,20 @@ void main() {
   const texPol = gl.createTexture(); gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, texPol);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.R16UI, PW, PH, 0, gl.RED_INTEGER, gl.UNSIGNED_SHORT, new Uint16Array(PN));
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  const texPal = gl.createTexture(); gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, texPal);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, 2048, 1, 0, gl.RED, gl.UNSIGNED_BYTE, new Uint8Array(2048));
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
   gl.activeTexture(gl.TEXTURE0);
   let polShown = -1, polArr = null;
   async function showPolity(year) {
     const i = polIndex(year);
     if (i === polShown) return;
-    const a = await loadPol(i);
+    const { a, pal } = await loadPol(i);
     if (polIndex(tToYear(S.t)) !== i) return; // time moved on while decoding
     gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, texPol);
     gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, PW, PH, gl.RED_INTEGER, gl.UNSIGNED_SHORT, a);
+    gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, texPal);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 2048, 1, gl.RED, gl.UNSIGNED_BYTE, pal);
     gl.activeTexture(gl.TEXTURE0);
     polShown = i; polArr = a; render();
     if (i + 1 < POL.years.length) loadPol(i + 1);
@@ -450,7 +453,11 @@ void main() {
   let theme = null;
   function readTheme() {
     const lum = hex(css("--bg")).reduce((a, b) => a + b, 0) / 3;
-    theme = { dark: lum < 0.5, border: lum < 0.5 ? [0.9, 0.95, 0.95] : [0.08, 0.15, 0.17], space: hex(css("--space")), ocean: hex(css("--ocean")), land: hex(css("--land")), grat: css("--grat"),
+    // political palette: same hue formula as build_political.py (golden-ratio spacing), lightness stepped so neighbours differ
+    const hslRgb = (h, s, l) => { const k = (n) => (n + h * 12) % 12, a = s * Math.min(l, 1 - l), f = (n) => l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1)); return [f(0), f(8), f(4)]; };
+    const dk = lum < 0.5, palC = new Float32Array(48);
+    for (let i = 0; i < 16; i++) palC.set(hslRgb((i * 0.381966) % 1, dk ? 0.42 : 0.5, (dk ? 0.36 : 0.68) + [-0.05, 0, 0.05][i % 3]), i * 3);
+    theme = { dark: lum < 0.5, palC, border: lum < 0.5 ? [0.9, 0.95, 0.95] : [0.08, 0.15, 0.17], space: hex(css("--space")), ocean: hex(css("--ocean")), land: hex(css("--land")), grat: css("--grat"),
       ramp: ["--h0", "--h1", "--h2", "--h3", "--h4", "--h5"].map((n) => hex(css(n))), sel: [1, 2, 3, 4, 5].map((i) => hex(css("--c" + i))) };
     const rs = ["--h0", "--h1", "--h2", "--h3", "--h4", "--h5"].map((n, i) => `${css(n)} ${(i / 5) * 100}%`).join(",");
     $("#ramp").style.background = `linear-gradient(90deg, ${rs})`;
@@ -472,7 +479,8 @@ void main() {
     gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, texPol); gl.uniform1i(gl.getUniformLocation(globeP, "uPol"), 1); gl.activeTexture(gl.TEXTURE0);
     gl.uniform1i(gl.getUniformLocation(globeP, "uLayer"), S.layer === 1 && polShown >= 0 ? 1 : 0);
     gl.uniform2i(gl.getUniformLocation(globeP, "uPolSize"), PW, PH);
-    gl.uniform2fv(gl.getUniformLocation(globeP, "uSL"), theme.dark ? [0.42, 0.34] : [0.50, 0.70]);
+    gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, texPal); gl.uniform1i(gl.getUniformLocation(globeP, "uPalTex"), 2); gl.activeTexture(gl.TEXTURE0);
+    gl.uniform3fv(gl.getUniformLocation(globeP, "uPalC"), theme.palC);
     gl.uniform3fv(gl.getUniformLocation(globeP, "uBorder"), theme.border);
     gl.bindVertexArray(vaoGlobe); gl.drawElements(gl.TRIANGLES, sphere.idx.length, gl.UNSIGNED_INT, 0);
 
