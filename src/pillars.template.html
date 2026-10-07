@@ -67,6 +67,7 @@ h1 { font: 500 22px/1.1 var(--font-display); margin: 0; letter-spacing: -0.01em;
 .rellegend span { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 .rellegend i { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
 .rellegend i.fade { background: color-mix(in srgb, var(--muted) 35%, transparent); border: 1px solid var(--muted); }
+.rellegend i.tile { background: conic-gradient(#1f63c9 0 25%, #169a55 0 50%, #f2b81c 0 75%, #e03a22 0); }
 .rellegend i.stripe { background: repeating-linear-gradient(135deg, #1f63c9 0 2px, #169a55 2px 4px); }
 .chk { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); cursor: pointer; }
 .chk input { accent-color: var(--accent); margin: 0; }
@@ -206,7 +207,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); height: 24px; ma
     <h2>Data</h2>
     <p>City populations come from Stadestér 1.0 (Reba et al., Chandler, Modelski, Buringh and others): the 4,476 cities that ever reach 100,000, as whole urban agglomerations, interpolated in log space between observations. A city is hidden before its first record and held at its last value (shown dimmer) after the table ends, about 2000. City area is measured from about 1800; before that it is modelled as population divided by the median city density of 1800 (about 18,000 people per km²), so earlier pillars are estimates and the tooltip says which. "People in view" comes from a 55 km population grid, so it is rough in close-ups.</p>
     <p>Coastlines are Natural Earth 50 m land, drawn at 18 km resolution. The Political layer is Cliopatria (Seshat Global History Databank, CC BY 4.0): 1,637 polities, as snapshots every 100 years to 1000 CE, then every 50 and every 25 years, at the same 18 km resolution. A polity keeps its colour, a successor inherits the colour of the polity it overlaps most, and neighbours never share one. Borders are approximate, and where polities overlap the smaller one is drawn on top.</p>
-    <p>The Religion layer shows the religion, not the polity: neighbouring polities of the same religion merge into one region and borders are drawn only where the religion changes. Each polity is coloured by the religion families Wikidata records for it (property "religion or worldview", 421 of the 1,637 polities, about 39% of polity-covered land on average). A polity that lists several religions, or inherits several, is drawn in diagonal stripes of those colours. A polity with no record inherits the religions of the earlier polities it overlaps (a family needs at least 30% of the polity's area, at most two) and is drawn faded; the "Show inferred" box hides that fill, leaving only recorded religions. With inheritance about 72% of land is coloured. That is an assumption of continuity, not a record: conquests and conversions are not modelled and there is nothing before roughly 1800 BCE. Families are my grouping of 108 Wikidata labels into nine. In the info card, people in a striped polity are split evenly between its religions, and the figures are people first, land second.</p>
+    <p>The Religion layer shows the religion, not the polity: neighbouring polities of the same religion merge into one region and borders are drawn only where the religion changes. Each polity is coloured by the religion families Wikidata records for it (property "religion or worldview", 421 of the 1,637 polities, about 39% of polity-covered land on average). A polity that lists several religions, or inherits several, is drawn in diagonal stripes (two religions) or a mosaic of colour tiles (three or more). A polity with no record inherits religions only from a clearly continuous predecessor (its territory and the predecessor's must overlap by at least 40% of their combined area, so a small successor does not inherit from a vast empire it came out of; at most two families, each covering at least 30% of the polity; and no more than three successions in a row) and is drawn faded; the "Show inferred" box hides that fill, leaving only recorded religions. With inheritance about 51% of land is coloured. That is an assumption of continuity, not a record: conquests and conversions are not modelled and there is nothing before roughly 1800 BCE. Families are my grouping of 108 Wikidata labels into nine. In the info card, people in a striped polity are split evenly between its religions, and the figures are people first, land second.</p>
     <p>The time axis is stretched: 2357 BCE–0, 0–1700 and 1700–2025 get 30%, 30% and 40% of the width. Data: <a href="https://doi.org/10.5281/zenodo.17180328" target="_blank" rel="noopener">Stadestér 1.0 (Zenodo, MIT)</a>.</p>
   </div>
 </div>
@@ -299,12 +300,14 @@ int relMask(uint id) {
   return v.x + ((v.y & 1) << 8);
 }
 int bitCount9(int m) { int n = 0; for (int i = 0; i < 9; i++) n += (m >> i) & 1; return n; }
-// one family colour, or diagonal stripes cycling through the families when the polity has several
-vec3 relColour(int m, float phase) {
-  int n = 0;
-  for (int i = 0; i < 9; i++) n += (m >> i) & 1;
+// one family colour; two families as diagonal stripes; three or more as a mosaic of square tiles (one tile cycle holds every colour)
+vec3 relColour(int m, vec2 t) {
+  int n = bitCount9(m);
   if (n == 0) return mix(uLandC, vec3(0.5), 0.22);
-  int k = n == 1 ? 0 : int(floor(fract(phase) * float(n)));
+  float cell = max(uTexPx, 0.0001) * 9.0; // about 9 screen px at any zoom
+  int k = 0;
+  if (n == 2) k = int(floor(fract((t.x + t.y) / (cell * 2.0)) * 2.0));
+  else if (n >= 3) { ivec2 c = ivec2(floor(t / cell)); k = ((c.x + 2 * c.y) % n + n) % n; }
   for (int i = 0; i < 9; i++) { if (((m >> i) & 1) == 1) { if (k == 0) return uRelC[i + 1]; k--; } }
   return uLandC;
 }
@@ -322,7 +325,7 @@ void main() {
     float dt = max(length(fwidth(n)) * 343.8, 0.0001), b = 0.0; // texels per screen pixel
     if (id != 0u && uLayer == 2) {
       int m = relMask(id);
-      vec3 rc = relColour(m, (t.x + t.y) / (uTexPx * 9.0 * float(max(bitCount9(m), 1)))); // every stripe stays about 9 px wide at any zoom
+      vec3 rc = relColour(m, t);
       if (relInf(id)) rc = mix(rc, uLandC, 0.38);
       if (uHover != 0 && (m & uHover) == 0) rc = mix(rc, uLandC, 0.75);
       landC = mix(uLandC, rc, 0.94);
@@ -527,7 +530,7 @@ void main() {
   const FAM = POL.families;
   function buildRelLegend() {
     $("#rellegend").innerHTML = FAM.map((n, i) => i ? `<span><i style="background:${relHexNow[i]}"></i>${n}</span>` : "").join("")
-      + `<span class="d"><i class="fade"></i>faded = inferred</span><span class="d"><i class="stripe"></i>stripes = several religions</span>`;
+      + `<span class="d"><i class="fade"></i>faded = inferred</span><span class="d"><i class="stripe"></i>stripes = two religions</span><span class="d"><i class="tile"></i>tiles = three or more</span>`;
   }
   function readTheme() {
     const lum = hex(css("--bg")).reduce((a, b) => a + b, 0) / 3;

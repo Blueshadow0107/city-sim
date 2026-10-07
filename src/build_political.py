@@ -84,15 +84,20 @@ def known_religions(feats) -> dict[str, tuple[int, str]]:
     return out
 
 
-INFERRED = 0x8000  # flag bit in the uint16 stored per polity; the low 9 bits are the family mask
+INFERRED = 0x8000  # flag bit in the uint16 stored per polity; bits 0-8 are the family mask, bits 12-14 count successions
+MIN_IOU = 0.40     # a predecessor must cover at least 40% of (successor union predecessor) to pass its religion on
+MAX_HOPS = 3       # inferred religions are dropped after this many successions
 
 
 def assign_religion(a: np.ndarray, prev: np.ndarray | None, prev_rel: dict[int, int], known: dict[int, int], K: int) -> dict[int, int]:
-    """uint16 per polity: family bitmask, plus INFERRED when it was not recorded. Known polities keep their recorded set;
-    others inherit every family that at least 30% of their own area overlaps in earlier polities (at most two)."""
+    """uint16 per polity: family bitmask, plus INFERRED when it was not recorded. Known polities keep their recorded set.
+    Others inherit only across a clearly continuous successor: a predecessor whose territory overlaps theirs with
+    overlap/union >= MIN_IOU (so a small successor does not inherit from a vast empire it came out of), at most two
+    families (each needs 30% of the polity's area among such predecessors), and at most MAX_HOPS successions."""
     cnt = np.bincount(a.ravel(), minlength=K + 1)
     present = [i for i in range(1, K + 1) if cnt[i] > 0]
     overlaps: dict[int, list[tuple[int, int]]] = {}
+    pcnt = np.bincount(prev.ravel(), minlength=K + 1) if prev is not None else None
     if prev is not None:
         both = (a != 0) & (prev != 0)
         codes, counts = np.unique(a[both].astype(np.int64) * 65536 + prev[both], return_counts=True)
@@ -104,14 +109,23 @@ def assign_religion(a: np.ndarray, prev: np.ndarray | None, prev_rel: dict[int, 
             out[i] = known[i]
             continue
         votes: dict[int, int] = {}
+        hops = 0
         for n, pid in overlaps.get(i, []):
-            m = prev_rel.get(pid, 0) & 0x1FF
+            iou = n / (cnt[i] + pcnt[pid] - n)
+            pv = prev_rel.get(pid, 0)
+            if iou < MIN_IOU or not pv & 0x1FF:
+                continue
+            h = (pv >> 12) & 7
+            h = h if pid == i else h + 1  # the same polity carried over a snapshot is not a new succession
+            if h > MAX_HOPS:
+                continue
+            hops = max(hops, h)
             for f in range(9):
-                if m >> f & 1:
+                if pv >> f & 1:
                     votes[f] = votes.get(f, 0) + n
         top = sorted((f for f in votes if votes[f] >= 0.30 * cnt[i]), key=lambda f: -votes[f])[:2]
         if top:
-            out[i] = sum(1 << f for f in top) | INFERRED
+            out[i] = sum(1 << f for f in top) | INFERRED | (hops << 12)
     return out
 
 
