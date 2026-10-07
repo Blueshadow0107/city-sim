@@ -23,6 +23,80 @@ YEARS = list(range(-2400, 1001, 100)) + list(range(1050, 1801, 50)) + list(range
 
 NCOL = 16
 
+# Religion families (index 0 = unknown). The page uses the same order.
+FAMILIES = ["Unknown", "Christianity", "Islam", "Hinduism", "Buddhism", "Judaism", "East Asian", "Zoroastrianism",
+            "Jainism & Sikhism", "Ancient & indigenous", "Secular", "Other"]
+RULES = [  # (family index, substrings of the lower-cased Wikidata label); first matching rule wins
+    (10, ["agnostic", "secular", "irreligion", "atheism"]),
+    (6, ["shinbutsu", "taoism", "confuci", "chinese folk", "shinto", "heaven worship", "ryukyuan", "caodai", "hòa hảo", "ancestor"]),
+    (4, ["buddh", "theravāda", "mahāyāna"]),
+    (3, ["hindu", "shaiv", "vedic"]),
+    (2, ["islam", "sunni", "shia", "shiism", "alevi", "bektashi", "sammān", "ahmadiyya"]),
+    (1, ["christian", "catholic", "orthodox", "protestant", "luther", "reformed", "church of england", "arian", "nestorian",
+         "apostolic", "coptic", "church", "old believers", "gereformeerde", "latin church"]),
+    (5, ["judaism", "israelite"]),
+    (7, ["zoroast"]),
+    (8, ["jain", "sikh"]),
+    (9, ["pagan", "tengri", "shaman", "animis", "african religion", "yoruba", "greek religion", "roman religion", "gallo-roman",
+         "ancient egypt", "babylonian", "sumerian", "hittite", "etruscan", "illyrian", "thracian", "scythian", "baltic", "mythology",
+         "aztec", "inca", "longhouse", "polytheism", "bon", "kirat", "kejawen", "arabian", "germanic"]),
+]
+
+
+def family_of(label: str) -> int:
+    low = label.lower()
+    for fam, keys in RULES:
+        if any(k in low for k in keys):
+            return fam
+    return 11
+
+
+def known_religions(feats) -> dict[str, tuple[int, str]]:
+    """polity name -> (family, label text) from Wikidata P140; the family with most labels wins, world religions win ties."""
+    rel = json.load(open(ROOT / "data/raw/wikidata/religion.json"))
+    q_of = {f["properties"]["Name"]: f["properties"]["Wikidata"] for f in feats if f["properties"].get("Wikidata")}
+    out: dict[str, tuple[int, str]] = {}
+    for name, q in q_of.items():
+        labels = rel.get(q)
+        if not labels:
+            continue
+        votes: dict[int, int] = {}
+        for lab in labels:
+            votes[family_of(lab)] = votes.get(family_of(lab), 0) + 1
+        fam = max(votes, key=lambda k: (votes[k], -k))
+        out[name] = (fam, ", ".join(labels[:2]))
+    return out
+
+
+def assign_religion(a: np.ndarray, prev: np.ndarray | None, prev_rel: dict[int, int], known: dict[int, int], K: int) -> dict[int, int]:
+    """Byte per polity: family | 128 if inferred. Known polities keep their recorded family; others inherit from the
+    earlier polity they overlap most (needs >= 25% of their own area), otherwise stay unknown (0)."""
+    cnt = np.bincount(a.ravel(), minlength=K + 1)
+    present = [i for i in range(1, K + 1) if cnt[i] > 0]
+    overlaps: dict[int, list[tuple[int, int]]] = {}
+    if prev is not None:
+        both = (a != 0) & (prev != 0)
+        codes, counts = np.unique(a[both].astype(np.int64) * 65536 + prev[both], return_counts=True)
+        for code, n in zip(codes, counts):
+            overlaps.setdefault(int(code >> 16), []).append((int(n), int(code & 65535)))
+        for v in overlaps.values():
+            v.sort(reverse=True)
+    out: dict[int, int] = {}
+    for i in present:
+        if i in known:
+            out[i] = known[i]
+            continue
+        votes: dict[int, int] = {}
+        for n, pid in overlaps.get(i, []):
+            fam = prev_rel.get(pid, 0) & 127
+            if fam:
+                votes[fam] = votes.get(fam, 0) + n
+        if votes:
+            fam = max(votes, key=lambda k: votes[k])
+            if votes[fam] >= 0.25 * cnt[i]:
+                out[i] = fam | 128
+    return out
+
 
 def hue(c: int) -> float:
     """Hue of palette colour c (golden-ratio spacing, so neighbouring indices are far apart). The page uses the same formula."""
@@ -102,10 +176,15 @@ def main() -> None:
     print(f"{len(feats)} shapes, {len(names)} polities")
 
     K = len(names)
+    known_by_name = known_religions(feats)
+    known = {pid[n]: v[0] for n, v in known_by_name.items()}
+    print(f"religion recorded for {len(known)} of {K} polities")
     memory: dict[int, int] = {}  # polity id -> last colour it had, for polities that vanish and come back
     prev_ids: np.ndarray | None = None
     prev_col: dict[int, int] = {}
-    chunks, pals, total_raw = [], [], 0
+    prev_rel: dict[int, int] = {}
+    chunks, pals, rels, total_raw = [], [], [], 0
+    cov_known, cov_all = [], []
     for y in YEARS:
         active = [f for f in feats if f["properties"]["FromYear"] <= y <= f["properties"]["ToYear"]]
         active.sort(key=lambda f: -(f["properties"].get("Area") or 0))
@@ -124,6 +203,16 @@ def main() -> None:
         for i, c in col.items():
             pal[i] = c
         pals.append(base64.b64encode(zlib.compress(pal.tobytes(), 9)).decode())
+        rel = assign_religion(a, prev_ids, prev_rel, known, K)
+        rel_arr = np.zeros(K + 1, dtype=np.uint8)
+        for i, v in rel.items():
+            rel_arr[i] = v
+        rels.append(base64.b64encode(zlib.compress(rel_arr.tobytes(), 9)).decode())
+        wts = np.cos((90 - (np.arange(H) + 0.5) * 180 / H) * np.pi / 180)[:, None] * np.ones((1, W))
+        land = a != 0
+        cov_known.append((wts * (land & (rel_arr[a] != 0) & (rel_arr[a] < 128))).sum() / max((wts * land).sum(), 1e-9))
+        cov_all.append((wts * (land & (rel_arr[a] != 0))).sum() / max((wts * land).sum(), 1e-9))
+        prev_rel = rel
         prev_ids, prev_col = a, col
         memory.update(col)
         planes =np.concatenate([(a >> 8).astype(np.uint8).ravel(), (a & 255).astype(np.uint8).ravel()])
@@ -132,8 +221,11 @@ def main() -> None:
         chunks.append(base64.b64encode(z).decode())
         print(f"  {y:>5}: {len(active):4d} shapes, {len(z)/1e3:6.0f} kB", flush=True)
 
-    doc = {"w": W, "h": H, "years": YEARS, "chunks": chunks, "pals": pals, "ncol": NCOL,
-           "polities": [[n, first[n], last[n], wiki[n]] for n in names]}
+    print(f"religion coverage of polity land, mean over snapshots: recorded {np.mean(cov_known):.0%}, with inheritance {np.mean(cov_all):.0%}")
+    for y, k, al in list(zip(YEARS, cov_known, cov_all))[::6]:
+        print(f"   {y:>6}: recorded {k:4.0%}  with inheritance {al:4.0%}")
+    doc = {"w": W, "h": H, "years": YEARS, "chunks": chunks, "pals": pals, "rels": rels, "ncol": NCOL, "families": FAMILIES,
+           "polities": [[n, first[n], last[n], wiki[n], known_by_name.get(n, (0, ""))[1]] for n in names]}
     OUT.write_text(json.dumps(doc, ensure_ascii=False, separators=(",", ":")))
     print("wrote", OUT, f"{OUT.stat().st_size/1e6:.1f} MB for {len(YEARS)} snapshots")
 
