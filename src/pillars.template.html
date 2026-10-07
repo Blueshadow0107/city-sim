@@ -192,7 +192,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); height: 24px; ma
       </section>
       <section class="card">
         <h2>Routes</h2>
-        <span class="seg" id="routemode" role="group" aria-label="Route layer"><button type="button" data-r="1" aria-pressed="true">Model</button><button type="button" data-r="0" aria-pressed="false">Off</button></span>
+        <span class="seg" id="routemode" role="group" aria-label="Route layer"><button type="button" data-r="1" aria-pressed="true">Model</button><button type="button" data-r="2" aria-pressed="false">Roman roads</button><button type="button" data-r="3" aria-pressed="false">Both</button><button type="button" data-r="0" aria-pressed="false">Off</button></span>
         <label class="dial" for="nexp" title="Gravity: pop × pop / distance^n. Low n links far cities, high n keeps links local.">Exponent n <input type="range" id="nexp" min="0.5" max="3" step="0.1" value="2"><output id="nout">2.0</output></label>
       </section>
     </div>
@@ -214,6 +214,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); height: 24px; ma
     <p>Coastlines are Natural Earth 50 m land, drawn at 18 km resolution. The Political layer is Cliopatria (Seshat Global History Databank, CC BY 4.0): 1,637 polities, as snapshots every 100 years to 1000 CE, then every 50 and every 25 years, at the same 18 km resolution. A polity keeps its colour, a successor inherits the colour of the polity it overlaps most, and neighbours never share one. Borders are approximate, and where polities overlap the smaller one is drawn on top.</p>
     <p>The Religion layer shows the religion, not the polity: neighbouring polities of the same religion merge into one region and borders are drawn only where the religion changes. Each polity is coloured by the religion families Wikidata records for it (property "religion or worldview", 421 of the 1,637 polities, about 39% of polity-covered land on average). A polity that lists several religions, or inherits several, is drawn in diagonal stripes (two religions) or a mosaic of colour tiles (three or more). A polity with no record inherits religions only from a clearly continuous predecessor (its territory and the predecessor's must overlap by at least 40% of their combined area, so a small successor does not inherit from a vast empire it came out of; at most two families, each covering at least 30% of the polity; and no more than three successions in a row) and is drawn faded; the "Show inferred" box hides that fill, leaving only recorded religions. With inheritance about 51% of land is coloured. That is an assumption of continuity, not a record: conquests and conversions are not modelled and there is nothing before roughly 1800 BCE. Families are my grouping of 108 Wikidata labels into nine. In the info card, people in a striped polity are split evenly between its religions, and the figures are people first, land second.</p>
     <p>Model routes are not historical roads. For the biggest cities in view (up to 110), each pair gets a gravity weight, population × population ÷ distance<sup>n</sup>, with n from the slider (low n links far cities, high n keeps links local). The strongest links are taken first, but a link that would only join cities already connected is kept only for the strongest handful (a spanning skeleton plus about half as many extra links), so every reachable city has at least one route. Routes avoid open sea: beyond a 500 km strait the path must be at least two thirds land. Thickness shows relative strength; arcs are lifted so they read above the pillars.</p>
+    <p>Roman roads are Itiner-e (de Soto, Pažout, Brughmans and others, CC BY 4.0): 14,769 road segments across the empire, main roads brighter than secondary ones, simplified to about 1 km. Only about 3% of segments carry dates, so the whole network is shown together between 300 BCE and 500 CE (the dataset describes the empire roughly 300 BCE to 300 CE), fading in and out at the edges, and the few dated roads use their own dates. Many segments are conjectured rather than certain.</p>
     <p>The time axis is stretched: 2357 BCE–0, 0–1700 and 1700–2025 get 30%, 30% and 40% of the width. Data: <a href="https://doi.org/10.5281/zenodo.17180328" target="_blank" rel="noopener">Stadestér 1.0 (Zenodo, MIT)</a>.</p>
   </div>
 </div>
@@ -282,6 +283,7 @@ const DATA = /*__DATA__*/{};
   const gl = glc.getContext("webgl2", { antialias: true, alpha: false });
   if (!gl) { $("#nogl").hidden = false; return; }
 
+  async function inflateBytes(b64) { return new Uint8Array(await new Response(new Blob([Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))]).stream().pipeThrough(new DecompressionStream("deflate"))).arrayBuffer()); }
   // ---- shaders
   function program(vs, fs) {
     const mk = (t, s) => { const sh = gl.createShader(t); gl.shaderSource(sh, s); gl.compileShader(sh); if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(sh)); return sh; };
@@ -355,6 +357,14 @@ void main() {
   const lineP = program(`#version 300 es
 in vec3 aPos; uniform mat4 uVP; void main() { gl_Position = uVP * vec4(aPos, 1.0); }`, `#version 300 es
 precision highp float; uniform vec4 uCol; out vec4 o; void main() { o = uCol; }`);
+  const roadP = program(`#version 300 es
+in vec3 aPos; in vec2 aSpan; uniform mat4 uVP; uniform float uYear; out float vA;
+void main() {
+  vA = smoothstep(aSpan.x - 80.0, aSpan.x, uYear) * (1.0 - smoothstep(aSpan.y, aSpan.y + 120.0, uYear));
+  gl_Position = uVP * vec4(aPos, 1.0);
+}`, `#version 300 es
+precision highp float; in float vA; uniform vec4 uCol; out vec4 o;
+void main() { float a = uCol.a * vA; if (a < 0.01) discard; o = vec4(uCol.rgb, a); }`);
   const pillarP = program(`#version 300 es
 in vec3 aCorner; in vec3 aNormal; in vec2 aLL; in vec4 aSize;
 uniform mat4 uVP; uniform vec3 uEye; uniform float uPx;
@@ -467,6 +477,27 @@ void main() {
     gratStep = step; gratCount = pts.length / 3;
   }
 
+  // ---- geometry: Roman roads (Itiner-e), static line buffers: [x, y, z, start, end] per vertex, main and secondary
+  const roads = { main: { vao: gl.createVertexArray(), n: 0 }, sec: { vao: gl.createVertexArray(), n: 0 } };
+  {
+    const u8 = await inflateBytes(DATA.roads.roads), RD = new Int32Array(u8.buffer, u8.byteOffset, u8.byteLength >> 2);
+    const xyz = (x, y) => { const la = y / 1000 * RAD, lo = x / 1000 * RAD, c = Math.cos(la) * 1.0009; return [c * Math.cos(lo), c * Math.sin(lo), Math.sin(la) * 1.0009]; };
+    const bufs = { main: [], sec: [] };
+    for (let p = 0; p < RD.length;) {
+      const n = RD[p++], meta = RD[p++], st = RD[p++], en = RD[p++]; let x = RD[p++], y = RD[p++];
+      const arr = (meta & 1) === 0 ? bufs.main : bufs.sec; let prev = xyz(x, y);
+      for (let k = 1; k < n; k++) { x += RD[p++]; y += RD[p++]; const cur = xyz(x, y); arr.push(...prev, st, en, ...cur, st, en); prev = cur; }
+    }
+    for (const key of ["main", "sec"]) {
+      const r = roads[key], data = new Float32Array(bufs[key]); r.n = data.length / 5;
+      gl.bindVertexArray(r.vao); const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+      const aP = gl.getAttribLocation(roadP, "aPos"), aS = gl.getAttribLocation(roadP, "aSpan");
+      gl.enableVertexAttribArray(aP); gl.vertexAttribPointer(aP, 3, gl.FLOAT, false, 20, 0);
+      gl.enableVertexAttribArray(aS); gl.vertexAttribPointer(aS, 2, gl.FLOAT, false, 20, 12);
+    }
+    DATA.roads.roads = null;
+  }
+
   // ---- geometry: pillars (unit box, instanced)
   const box = (() => {
     const v = []; const face = (nx, ny, nz, corners) => { for (const k of [0, 1, 2, 0, 2, 3]) v.push(...corners[k], nx, ny, nz); };
@@ -551,7 +582,7 @@ void main() {
       : ["#9a9a9a", "#1f63c9", "#169a55", "#e03a22", "#f2b81c", "#12b0c4", "#d1409a", "#7646c4", "#85603a", "#66767f"];
     const relC = new Float32Array(36); relHex.forEach((h, i) => relC.set(hex(h), i * 3)); // shader array holds 12
     relHexNow = relHex;
-    theme = { dark: lum < 0.5, palC, relC, border: lum < 0.5 ? [0.9, 0.95, 0.95] : [0.08, 0.15, 0.17], space: hex(css("--space")), ocean: hex(css("--ocean")), land: hex(css("--land")), grat: css("--grat"),
+    theme = { dark: lum < 0.5, palC, relC, road: hex(css("--c2")), border: lum < 0.5 ? [0.9, 0.95, 0.95] : [0.08, 0.15, 0.17], space: hex(css("--space")), ocean: hex(css("--ocean")), land: hex(css("--land")), grat: css("--grat"),
       ramp: ["--h0", "--h1", "--h2", "--h3", "--h4", "--h5"].map((n) => hex(css(n))), sel: [1, 2, 3, 4, 5].map((i) => hex(css("--c" + i))) };
     const rs = ["--h0", "--h1", "--h2", "--h3", "--h4", "--h5"].map((n, i) => `${css(n)} ${(i / 5) * 100}%`).join(",");
     $("#ramp").style.background = `linear-gradient(90deg, ${rs})`;
@@ -590,6 +621,17 @@ void main() {
     gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     gl.bindVertexArray(vaoGrat); gl.drawArrays(gl.LINES, 0, gratCount);
     gl.disable(gl.BLEND);
+
+    if (S.routes & 2) {
+      gl.useProgram(roadP);
+      gl.uniformMatrix4fv(gl.getUniformLocation(roadP, "uVP"), false, c.VP); gl.uniform1f(gl.getUniformLocation(roadP, "uYear"), tToYear(S.t));
+      gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+      gl.uniform4f(gl.getUniformLocation(roadP, "uCol"), theme.road[0], theme.road[1], theme.road[2], 0.45);
+      gl.bindVertexArray(roads.sec.vao); gl.drawArrays(gl.LINES, 0, roads.sec.n);
+      gl.uniform4f(gl.getUniformLocation(roadP, "uCol"), theme.road[0], theme.road[1], theme.road[2], 0.95);
+      gl.bindVertexArray(roads.main.vao); gl.drawArrays(gl.LINES, 0, roads.main.n);
+      gl.disable(gl.BLEND);
+    }
 
     gl.useProgram(pillarP);
     gl.uniformMatrix4fv(gl.getUniformLocation(pillarP, "uVP"), false, c.VP); gl.uniform3fv(gl.getUniformLocation(pillarP, "uEye"), c.eye);
@@ -656,7 +698,7 @@ void main() {
   let routes = [], routeKey = "", routeTimer = 0;
   function scheduleRoutes() { clearTimeout(routeTimer); routeTimer = setTimeout(computeRoutes, 200); }
   function computeRoutes() {
-    const ids = S.routes ? S.shown.slice(0, 110).map((m) => m.i) : [];
+    const ids = S.routes & 1 ? S.shown.slice(0, 110).map((m) => m.i) : [];
     const key = `${S.routes}|${S.n}|${Math.round(tToYear(S.t))}|${ids.join(",")}`;
     if (key === routeKey) return;
     routeKey = key;
@@ -684,7 +726,7 @@ void main() {
     render(); scheduleInfo();
   }
   function drawRoutes() {
-    if (!S.routes || !routes.length || !C) return;
+    if (!(S.routes & 1) || !routes.length || !C) return;
     const ex = C.eye;
     octx.save(); octx.lineCap = "round"; octx.strokeStyle = css("--ink");
     for (const r of routes) {
@@ -769,7 +811,7 @@ void main() {
     h += `<div class="k">Density</div><div>${landArea ? "≈ " + (pop / landArea < 10 ? (pop / landArea).toFixed(1) : Math.round(pop / landArea)) + " per km²" : "open water"}<span class="d"> · on land</span></div>`;
     h += `<div class="k">Cities</div><div>${cities.length} with records<span class="d"> · ${fmtBig(cityPop)} people in them</span></div>`;
     if (cities.length) h += `<ol class="top">${cities.slice(0, 5).map((c) => `<li><span>${esc(clean(CITIES[c.i].name))}</span><b>${fmtBig(c.p)}</b></li>`).join("")}</ol>`;
-    if (S.routes && routes.length) {
+    if ((S.routes & 1) && routes.length) {
       const top = routes[0];
       h += `<div class="k">Routes</div><div>${routes.length} model links<span class="d"> · strongest ${esc(clean(CITIES[top.i].name))} – ${esc(clean(CITIES[top.j].name))}</span></div>`;
     }
@@ -1013,8 +1055,11 @@ void main() {
 
   // deep link: #<w or jump 0-3>_<year>[_<tilt>]  (for checking a state)
   readTheme(); resize();
-  const hm = /^#(\d|w)_(-?\d+)(?:_(\d+))?(?:_(r|n|x))?$/.exec(location.hash); // ..._r Religion layer, ..._n Religion without inferred, ..._x Plain
-  if (hm && hm[4]) {
+  const hm = /^#(\d|w)_(-?\d+)(?:_(\d+))?(?:_(r|n|x|d|b))?$/.exec(location.hash); // ..._r Religion layer, ..._n Religion without inferred, ..._x Plain, ..._d Roman roads, ..._b model routes + roads
+  if (hm && (hm[4] === "d" || hm[4] === "b")) {
+    S.routes = hm[4] === "d" ? 2 : 3; routeKey = "";
+    document.querySelectorAll("#routemode button").forEach((x) => x.setAttribute("aria-pressed", String(+x.dataset.r === S.routes)));
+  } else if (hm && hm[4]) {
     S.layer = hm[4] === "x" ? 0 : 2; if (hm[4] === "n") { S.showInf = false; $("#infer").checked = false; }
     document.querySelectorAll("#layer button").forEach((x) => x.setAttribute("aria-pressed", String(+x.dataset.l === S.layer)));
     $("#rellegend").hidden = S.layer !== 2; $("#infwrap").hidden = S.layer !== 2;

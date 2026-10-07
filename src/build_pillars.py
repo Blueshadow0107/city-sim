@@ -107,10 +107,11 @@ def main() -> None:
             c["sat"] = bw.series(best[1])
 
     land, lw, lh = land_mask()
-    bookmarks = [{**b, "cities": [index[k] for k in b["cities"]], "range": 0.35, "tilt": 55} for b in bw.BOOKMARKS]
+    bookmarks = [{**b, "cities": [index[k] for k in b["cities"]], "range": b.get("range", 0.35), "tilt": 55} for b in bw.BOOKMARKS]
     political = json.load(open(ROOT / "data/processed/political.json"))  # run build_political.py first
     doc = {"land": {"w": lw, "h": lh, "data": land}, "dens": dens, "cities": cities, "bookmarks": bookmarks,
-           "political": political, "popgrid": pop_grid()}
+           "political": political, "popgrid": pop_grid(),
+           "roads": json.load(open(ROOT / "data/processed/roads.json"))}  # run build_roads.py first
     OUT.write_text(json.dumps(doc, ensure_ascii=False, separators=(",", ":")))
     print("wrote", OUT, f"{OUT.stat().st_size/1e6:.1f} MB  (land mask {len(land)/1e3:.0f} kB)")
 

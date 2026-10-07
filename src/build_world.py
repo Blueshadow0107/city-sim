@@ -39,6 +39,7 @@ BOOKMARKS = [
      "cities": ["Ur-Iraq", "Uruk-Iraq", "Seleucia-Iraq", "Ctesiphon-Iraq", "Baghdád-Iraq"]},
     {"id": "mexico", "title": "Tenochtitlan → Mexico City", "lat": 19.43, "lon": -99.13, "zoom": 14,
      "cities": ["Teotihuacán-Mexico", "Ciudad de México-Mexico"]},
+    {"id": "rome", "title": "Rome", "lat": 43.0, "lon": 14.0, "zoom": 8, "range": 0.55, "cities": ["Roma-Italy"]},
 ]
 
 
