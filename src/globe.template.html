@@ -5,11 +5,11 @@
 /* Layout: a globe stage with the year set into its corner and the time axis directly below;
    selection, chart and legend underneath. Same palette family as the flat atlas. */
 :root {
-  --bg: #e6ece7; --panel: #f4f7f3; --space: #dfe8e4; --ocean: #c3d5d6; --land: #eef1e8; --limb: rgba(10, 40, 48, 0.30);
+  --bg: #e6ece7; --panel: #f4f7f3; --space: #dfe8e4; --ocean: #ccd6d2; --land: #eef1e8; --limb: rgba(10, 40, 48, 0.30);
   --ink: #14262a; --muted: #566b6d; --rule: #bccac3; --accent: #0a7a74; --accent-ink: #ffffff;
   --grat: rgba(20, 38, 42, 0.14); --halo: rgba(244, 247, 243, 0.92);
   --c1: #0a7a74; --c2: #b4491b; --c3: #2f5da8; --c4: #8a6d0b; --c5: #4a7c2a;
-  --h0: #efe3b8; --h1: #e8c374; --h2: #e09a3e; --h3: #c9652b; --h4: #9c2b2f; --h5: #4a0f2a;
+  --h0: #dbeaf0; --h1: #8fc4cf; --h2: #3f9a96; --h3: #e0b83a; --h4: #d6542b; --h5: #7a1a2b;
   --font-display: "Newsreader", Georgia, serif; --font-ui: "IBM Plex Sans", system-ui, sans-serif; --font-data: "IBM Plex Mono", ui-monospace, monospace;
 }
 @media (prefers-color-scheme: dark) {
@@ -18,7 +18,7 @@
     --ink: #dbe9e6; --muted: #8aa3a2; --rule: #223539; --accent: #4fd0c4; --accent-ink: #06201e;
     --grat: rgba(219, 233, 230, 0.12); --halo: rgba(14, 26, 29, 0.9);
     --c1: #4fd0c4; --c2: #ff9a63; --c3: #7aa7ff; --c4: #e6c84f; --c5: #8fd16a;
-    --h0: #16393b; --h1: #2a6f68; --h2: #8bab4f; --h3: #e3c24a; --h4: #ff9a4d; --h5: #fff1d6; color-scheme: dark;
+    --h0: #0f2a33; --h1: #1d5d66; --h2: #2f9a93; --h3: #e0b83a; --h4: #ff6a3d; --h5: #fff1d6; color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
@@ -26,7 +26,7 @@
   --ink: #dbe9e6; --muted: #8aa3a2; --rule: #223539; --accent: #4fd0c4; --accent-ink: #06201e;
   --grat: rgba(219, 233, 230, 0.12); --halo: rgba(14, 26, 29, 0.9);
   --c1: #4fd0c4; --c2: #ff9a63; --c3: #7aa7ff; --c4: #e6c84f; --c5: #8fd16a;
-  --h0: #16393b; --h1: #2a6f68; --h2: #8bab4f; --h3: #e3c24a; --h4: #ff9a4d; --h5: #fff1d6; color-scheme: dark;
+  --h0: #0f2a33; --h1: #1d5d66; --h2: #2f9a93; --h3: #e0b83a; --h4: #ff6a3d; --h5: #fff1d6; color-scheme: dark;
 }
 * { box-sizing: border-box; }
 body { background: var(--bg); color: var(--ink); font-family: var(--font-ui); font-size: 14px; line-height: 1.45; padding-inline: 16px; padding-block: 18px 28px; }
@@ -270,6 +270,8 @@ const GLOBE = /*__DATA__*/{};
     const sl = Math.sin(l0), cl = Math.cos(l0), sp = Math.sin(p0), cp = Math.cos(p0);
     const Ex = -sl, Ey = cl, Nx = -sp * cl, Ny = -sp * sl, Nz = cp, Cx = cp * cl, Cy = cp * sl, Cz = sp;
     const kU = GW / (2 * Math.PI), kV = GH / Math.PI, hu = GW / 2, hv = GH / 2;
+    // blend neighbouring cells once a cell spans more than ~3 screen px, but not while moving
+    const smooth = !S.fast && (S.R * Math.PI / GH) * rs > 3;
     for (let py = 0; py < h; py++) {
       const y = (cy - py - 0.5) / R; if (y > 1 || y < -1) continue;
       const xm = Math.sqrt(1 - y * y) * R;
@@ -277,9 +279,22 @@ const GLOBE = /*__DATA__*/{};
       for (let px = x0; px <= x1; px++) {
         const x = (px + 0.5 - cx) / R, z = Math.sqrt(Math.max(0, 1 - x * x - y * y));
         const X = x * Ex + y * Nx + z * Cx, Y = x * Ey + y * Ny + z * Cy, Z = y * Nz + z * Cz;
-        let u = Math.floor(Math.atan2(Y, X) * kU + hu); if (u >= GW) u -= GW; else if (u < 0) u += GW;
-        let v = Math.floor(hv - Math.asin(Z > 1 ? 1 : Z < -1 ? -1 : Z) * kV); if (v >= GH) v = GH - 1; else if (v < 0) v = 0;
-        g32[py * w + px] = CELL[v * GW + u];
+        const uf = Math.atan2(Y, X) * kU + hu, vf = hv - Math.asin(Z > 1 ? 1 : Z < -1 ? -1 : Z) * kV;
+        if (!smooth) {
+          let u = Math.floor(uf); if (u >= GW) u -= GW; else if (u < 0) u += GW;
+          let v = Math.floor(vf); if (v >= GH) v = GH - 1; else if (v < 0) v = 0;
+          g32[py * w + px] = CELL[v * GW + u];
+          continue;
+        }
+        const ug = uf - 0.5, vg = vf - 0.5, uF = Math.floor(ug), vF = Math.floor(vg), fu = ug - uF, fv = vg - vF;
+        let ua = uF % GW; if (ua < 0) ua += GW; const ub = ua + 1 >= GW ? 0 : ua + 1;
+        const va = vF < 0 ? 0 : vF >= GH ? GH - 1 : vF, vb = vF + 1 < 0 ? 0 : vF + 1 >= GH ? GH - 1 : vF + 1;
+        const c00 = CELL[va * GW + ua], c10 = CELL[va * GW + ub], c01 = CELL[vb * GW + ua], c11 = CELL[vb * GW + ub];
+        const w00 = (1 - fu) * (1 - fv), w10 = fu * (1 - fv), w01 = (1 - fu) * fv, w11 = fu * fv;
+        const r = (c00 & 255) * w00 + (c10 & 255) * w10 + (c01 & 255) * w01 + (c11 & 255) * w11;
+        const g = ((c00 >> 8) & 255) * w00 + ((c10 >> 8) & 255) * w10 + ((c01 >> 8) & 255) * w01 + ((c11 >> 8) & 255) * w11;
+        const b = ((c00 >> 16) & 255) * w00 + ((c10 >> 16) & 255) * w10 + ((c01 >> 16) & 255) * w01 + ((c11 >> 16) & 255) * w11;
+        g32[py * w + px] = (255 << 24) | ((b + 0.5) << 16) | ((g + 0.5) << 8) | (r + 0.5);
       }
     }
     gctx.putImageData(gimg, 0, 0);
