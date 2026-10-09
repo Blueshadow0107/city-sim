@@ -6,9 +6,10 @@ Cities through time, 2357 BCE → 2025, on real data. Main product: `dist/city_p
 
 ```
 city-sim/
-├── src/                     # build scripts + page templates (see Build chain)
+├── src/                     # build scripts + *.template.html (see Build chain); crop_xian.py / palette_preview.py make the figures
 ├── scripts/fetch_zenodo.sh  # resumable Zenodo download
 ├── figures/                 # static figures (xian_eras.png, palette_preview.png)
+├── notebooks/               # empty
 ├── data -> HDD              # symlink to "Backup Plus1/projects/city-sim-data" (raw/, processed/) — never committed
 └── dist/                    # built pages (gitignored): city_pillars (main), city_globe, city_world, city_atlas
 ```
